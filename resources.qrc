@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/nag_archmap" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
