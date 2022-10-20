@@ -24,7 +24,7 @@
 
 import os
 import pandas as pd
-from .classes import PgConn
+from .classes import PgConn, DokDFM
 
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
@@ -46,8 +46,26 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # http://doc.qt.io/qt-5/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
-
+        self.init_tv_dok()
+        self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
         self.setup_widgets()
+
+    def __setattr__(self, attr, val):
+        """Przechwycenie zmiany atrybutu."""
+        super().__setattr__(attr, val)
+        if attr == "dok_df":
+            # Aktualizacja zawartości tableview po zmianie w dok_df
+            self.dok_mdl.setDataFrame(self.dok_col(val))
+
+    def init_tv_dok(self):
+        """Konfiguracja tableview dla listy dokumentacji."""
+        tv_dok_headers = ['nr inw', 'tytuł dokumentacji', 'rok']
+        temp_df = pd.DataFrame(columns=['nr inw', 'tytuł dokumentacji', 'rok'])
+        self.dok_mdl = DokDFM(df=temp_df, tv=self.tv_dok, col_names=tv_dok_headers)
+
+    def dok_col(self, df):
+        """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
+        return pd.concat(objs=[df.iloc[:,2], df.iloc[:,4:6]], axis=1)
 
     def setup_widgets(self):
         """Podłączenie widgetów do funkcji."""
@@ -56,19 +74,19 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def search_dok(self):
         """Wyszukanie dokumentacji w db na podstawie zapytania sql."""
         search_txt = self.le_search.text()
-        if len(search_txt) == 0:
-            return
-        dok_df = self.dok_from_query(search_txt)
-        print(dok_df)
+        self.dok_df = self.dok_from_query(search_txt)
 
     def dok_from_query(self, search_txt):
         """Zwraca dataframe z danymi dokumentacji wybranych w kwerendzie."""
+        empty_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
         db = PgConn()
         sql = f"SELECT * FROM search_dok('{search_txt}', false)"
         if db:
             df = db.query_pd(sql, ['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
             if isinstance(df, pd.DataFrame):
-                return df if len(df) > 0 else None
+                return df if len(df) > 0 else empty_df
+        else:
+            return empty_df
 
     def closeEvent(self, event):
         self.closingPlugin.emit()

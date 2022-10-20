@@ -6,7 +6,8 @@ import psycopg2.extras
 import pandas as pd
 
 from configparser import ConfigParser
-from qgis.PyQt.QtWidgets import QMessageBox
+from qgis.PyQt.QtCore import Qt, QAbstractTableModel, pyqtProperty, pyqtSlot, QVariant, QModelIndex
+from qgis.PyQt.QtWidgets import QMessageBox, QHeaderView
 
 DB_SOURCE = "PGI"
 
@@ -171,3 +172,138 @@ class PgConn:
             self.cursor.close()
             self.connection.close()
             PgConn._instance = None
+
+
+class DataFrameModel(QAbstractTableModel):
+    """Podstawowy model tabeli zasilany przez pandas dataframe."""
+    DtypeRole = Qt.UserRole + 1000
+    ValueRole = Qt.UserRole + 1001
+
+    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], parent=None):
+        super(DataFrameModel, self).__init__(parent)
+        self._dataframe = df
+        self.col_names = col_names
+        self.tv = tv  # Referencja do tableview
+        self.tv.setModel(self)
+        self.tv.selectionModel().selectionChanged.connect(lambda: self.layoutChanged.emit())
+        self.tv.horizontalHeader().setSortIndicatorShown(False)
+        self.tv.horizontalHeader().setSortIndicator(-1, 0)
+        self.sort_col = -1
+        self.sort_ord = 0
+
+    def col_names(self, df, col_names):
+        """Nadanie nazw kolumn tableview'u."""
+        df.columns = col_names
+        return df
+
+    def sort_reset(self):
+        """Wyłącza sortowanie po kolumnie."""
+        self.tv.horizontalHeader().setSortIndicator(-1, 0)
+        self.sort_col = -1
+        self.sort_ord = 0
+
+    def setDataFrame(self, dataframe):
+        self.beginResetModel()
+        self._dataframe = dataframe.copy()
+        self.endResetModel()
+
+    def dataFrame(self):
+        return self._dataframe
+
+    dataFrame = pyqtProperty(pd.DataFrame, fget=dataFrame, fset=setDataFrame)
+
+    @pyqtSlot(int, Qt.Orientation, result=str)
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                if self.col_names:
+                    try:
+                        return self.col_names[section]
+                    except:
+                        pass
+                return self._dataframe.columns[section]
+            else:
+                return str(self._dataframe.index[section])
+        return QVariant()
+
+    def rowCount(self, parent=QModelIndex()):
+        if parent.isValid():
+            return 0
+        return len(self._dataframe.index)
+
+    def columnCount(self, parent=QModelIndex()):
+        if parent.isValid():
+            return 0
+        return self._dataframe.columns.size
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < self.rowCount() \
+            and 0 <= index.column() < self.columnCount()):
+            return QVariant()
+        row = self._dataframe.index[index.row()]
+        col = self._dataframe.columns[index.column()]
+        dt = self._dataframe[col].dtype
+        try:
+            val = self._dataframe.iloc[row][col]
+        except:
+            return QVariant()
+        if role == DataFrameModel.ValueRole:
+            return val
+        if role == DataFrameModel.DtypeRole:
+            return dt
+        return QVariant()
+
+    def roleNames(self):
+        roles = {
+            Qt.DisplayRole: b'display',
+            DataFrameModel.DtypeRole: b'dtype',
+            DataFrameModel.ValueRole: b'value'
+        }
+        return roles
+
+
+class DokDFM(DataFrameModel):
+    """Subklasa dataframemodel dla tableview wyświetlającą listę dokumentacji."""
+
+    def __init__(self, df=pd.DataFrame(), tv=None, col_widths=[], col_names=[], parent=None):
+        super().__init__(df, tv, col_names)
+        self.tv = tv  # Referencja do tableview
+        self.col_format(col_widths)
+
+    def col_format(self, col_widths):
+        """Formatowanie szerokości kolumn tableview'u."""
+        cols = list(enumerate(col_widths, 0))
+        for col in cols:
+            self.tv.setColumnWidth(col[0], col[1])
+        h_header = self.tv.horizontalHeader()
+        h_header.setMinimumSectionSize(1)
+        h_header.setDefaultSectionSize(30)
+        h_header.setSectionResizeMode(QHeaderView.Interactive)
+        h_header.setSectionResizeMode(1, QHeaderView.Stretch)
+        h_header.resizeSection(0, 70)
+        h_header.resizeSection(1, 400)
+        h_header.resizeSection(2, 40)
+        v_header = self.tv.verticalHeader()
+        v_header.setSectionResizeMode(QHeaderView.ResizeToContents)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < self.rowCount() \
+            and 0 <= index.column() < self.columnCount()):
+            return QVariant()
+        row = self._dataframe.index[index.row()]
+        col = self._dataframe.columns[index.column()]
+        dt = self._dataframe[col].dtype
+        val = self._dataframe.iloc[row][col]
+        if role == Qt.DisplayRole:
+            return str(val)
+        elif role == Qt.TextAlignmentRole:
+
+            if index.column() == 1:
+                return Qt.AlignLeft + Qt.AlignVCenter
+            else:
+                return Qt.AlignVCenter + Qt.AlignHCenter
+        elif role == DataFrameModel.ValueRole:
+            return val
+        if role == DataFrameModel.DtypeRole:
+            return dt
+        return QVariant()
