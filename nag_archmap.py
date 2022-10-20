@@ -27,8 +27,6 @@ from qgis.PyQt.QtWidgets import QAction
 # Initialize Qt resources from file resources.py
 from .resources import *
 
-# Import the code for the DockWidget
-from .nag_archmap_dockwidget import NagArchMapDockWidget
 import os.path
 
 
@@ -210,6 +208,11 @@ class NagArchMap:
 
     def run(self):
         """Run method that loads and starts the plugin"""
+        from .nag_archmap_dockwidget import NagArchMapDockWidget
+        from .main import db_login
+
+        if not db_login():
+            return  # Użytkownik nie zalogował się poprawnie do bazy danych, przerwanie ładowania pluginu
 
         if not self.pluginIsActive:
             self.pluginIsActive = True
