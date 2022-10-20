@@ -23,6 +23,8 @@
 """
 
 import os
+import pandas as pd
+from .classes import PgConn
 
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
@@ -44,6 +46,29 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # http://doc.qt.io/qt-5/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+
+        self.setup_widgets()
+
+    def setup_widgets(self):
+        """Podłączenie widgetów do funkcji."""
+        self.btn_search.clicked.connect(self.search_dok)
+
+    def search_dok(self):
+        """Wyszukanie dokumentacji w db na podstawie zapytania sql."""
+        search_txt = self.le_search.text()
+        if len(search_txt) == 0:
+            return
+        dok_df = self.dok_from_query(search_txt)
+        print(dok_df)
+
+    def dok_from_query(self, search_txt):
+        """Zwraca dataframe z danymi dokumentacji wybranych w kwerendzie."""
+        db = PgConn()
+        sql = f"SELECT * FROM search_dok('{search_txt}', false)"
+        if db:
+            df = db.query_pd(sql, ['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
+            if isinstance(df, pd.DataFrame):
+                return df if len(df) > 0 else None
 
     def closeEvent(self, event):
         self.closingPlugin.emit()
