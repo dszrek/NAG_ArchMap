@@ -23,12 +23,11 @@
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QMessageBox
+
 # Initialize Qt resources from file resources.py
 from .resources import *
 
-# Import the code for the DockWidget
-from .nag_archmap_dockwidget import NagArchMapDockWidget
 import os.path
 
 
@@ -210,6 +209,23 @@ class NagArchMap:
 
     def run(self):
         """Run method that loads and starts the plugin"""
+        from .nag_archmap_dockwidget import NagArchMapDockWidget
+        from .main import db_login
+
+        if self.pluginIsActive:
+            # Plugin jest już uruchomiony
+            QMessageBox.information(None, "NAG_ArchMap", "Wtyczka jest już uruchomiona.")
+            return  # Uniemożliwienie uruchomienia drugiej instancji pluginu
+
+        dir_access = os.access('\\\pgi.local\pig_dfs2\Projekty\CAG\Dokumenty CAG', os.R_OK)
+        if not dir_access:
+            QMessageBox.critical(None, "NAG_ArchMap", f'Nie ma dostępu do "\\pgi.local\pig_dfs2\Projekty\CAG\Dokumenty CAG".\nDo działania wtyczki niezbędne jest połączenie z siecią PIG-PIB oraz posiadanie uprawnień do odczytu danych ze wspomnianego folderu.')
+            # Użytkownik nie ma dostępu do zasobów na dysku H, przerwanie ładowania pluginu
+            return
+
+        if not db_login():
+            # Użytkownik nie zalogował się poprawnie do bazy danych, przerwanie ładowania pluginu
+            return
 
         if not self.pluginIsActive:
             self.pluginIsActive = True
