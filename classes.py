@@ -277,6 +277,7 @@ class DokDFM(DataFrameModel):
             self.tv.setColumnWidth(col[0], col[1])
         h_header = self.tv.horizontalHeader()
         h_header.setMinimumSectionSize(1)
+        h_header.setFixedHeight(30)
         h_header.setDefaultSectionSize(30)
         h_header.setSectionResizeMode(QHeaderView.Interactive)
         h_header.setSectionResizeMode(1, QHeaderView.Stretch)
