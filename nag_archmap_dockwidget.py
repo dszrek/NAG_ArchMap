@@ -26,6 +26,7 @@ import os
 import pandas as pd
 from .classes import PgConn, DokDFM, MapDFM
 
+from qgis.core import QgsProject
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import QMessageBox
@@ -47,6 +48,8 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # http://doc.qt.io/qt-5/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.proj = QgsProject.instance()  # Referencja do instancji projektu
+        self.root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
         self.le_filter_search.setVisible(False)
         self.init_void = True
         self.init_tv_dok()
@@ -55,7 +58,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.map_df = pd.DataFrame(columns=['map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
         self.setup_widgets()
         self.dok_id = None
+        self.main_grp = None
         self.init_void = False
+        self.structure_check()
 
     def __setattr__(self, attr, val):
         """Przechwycenie zmiany atrybutu."""
@@ -68,6 +73,13 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             print(f"dok_id: {self.dok_id}")
             self.sel_dok_attr_update()
             self.map_df_update()
+
+    def structure_check(self):
+        """Sprawdzenie, czy w legendzie istnieje grupa 'NAG_ArchMap'"""
+        self.main_grp = self.root.findGroup("NAG_ArchMap")
+        if not self.main_grp:
+            # Utworzenie grupy systemowej, jeśli jej nie ma
+            self.main_grp = self.root.insertGroup(-1, "NAG_ArchMap")
 
     def sel_dok_attr_update(self):
         """Aktualizacja widget'ów wyświetlających atrybuty wybranej dokumentacji."""
