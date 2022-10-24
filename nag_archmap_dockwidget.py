@@ -47,6 +47,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # http://doc.qt.io/qt-5/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.le_filter_search.setVisible(False)
         self.init_void = True
         self.init_tv_dok()
         self.init_tv_map()
@@ -148,15 +149,15 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def init_tv_dok(self):
         """Konfiguracja tableview dla listy dokumentacji."""
         self.stacked_dok.setCurrentIndex(0)
-        tv_dok_headers = ['dok_id', 'tytuł dokumentacji', 'rok']
-        temp_df = pd.DataFrame(columns=['dok_id', 'tytuł dokumentacji', 'rok'])
+        tv_dok_headers = ['dok_id', 'Nr CBDG', 'Tytuł dokumentacji', 'Rok']
+        temp_df = pd.DataFrame(columns=['dok_id', 'Nr CBDG', 'Tytuł dokumentacji', 'Rok'])
         self.dok_mdl = DokDFM(df=temp_df, tv=self.tv_dok, col_names=tv_dok_headers)
         self.tv_dok.selectionModel().selectionChanged.connect(self.tv_dok_sel_change)
 
     def init_tv_map(self):
         """Konfiguracja tableview dla listy map wybranej dokumentacji."""
-        tv_map_headers = ['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik']
-        temp_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+        tv_map_headers = ['ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
+        temp_df = pd.DataFrame(columns=['ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik'])
         self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers)
 
     def tv_dok_unsel(self, scroll_top=True):
@@ -176,7 +177,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
-        return pd.concat(objs=[df.iloc[:,0], df.iloc[:,4:6]], axis=1)
+        return pd.concat(objs=[df.iloc[:,0:2], df.iloc[:,4:6]], axis=1)
 
     def setup_widgets(self):
         """Podłączenie widgetów do funkcji."""

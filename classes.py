@@ -265,25 +265,23 @@ class DataFrameModel(QAbstractTableModel):
 class DokDFM(DataFrameModel):
     """Subklasa dataframemodel dla tableview wyświetlającą listę dokumentacji."""
 
-    def __init__(self, df=pd.DataFrame(), tv=None, col_widths=[], col_names=[], parent=None):
+    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], parent=None):
         super().__init__(df, tv, col_names)
         self.tv = tv  # Referencja do tableview
-        self.col_format(col_widths)
+        self.col_format()
 
-    def col_format(self, col_widths):
+    def col_format(self):
         """Formatowanie szerokości kolumn tableview'u."""
-        cols = list(enumerate(col_widths, 0))
-        for col in cols:
-            self.tv.setColumnWidth(col[0], col[1])
         h_header = self.tv.horizontalHeader()
         h_header.setMinimumSectionSize(1)
         h_header.setFixedHeight(30)
         h_header.setDefaultSectionSize(30)
         h_header.setSectionResizeMode(QHeaderView.Interactive)
-        h_header.setSectionResizeMode(1, QHeaderView.Stretch)
+        h_header.setSectionResizeMode(2, QHeaderView.Stretch)
         h_header.resizeSection(0, 70)
-        h_header.resizeSection(1, 400)
-        h_header.resizeSection(2, 40)
+        h_header.resizeSection(1, 60)
+        h_header.resizeSection(2, 400)
+        h_header.resizeSection(3, 40)
         v_header = self.tv.verticalHeader()
         v_header.setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tv.setColumnHidden(0, True)
@@ -300,7 +298,7 @@ class DokDFM(DataFrameModel):
             return str(val)
         elif role == Qt.TextAlignmentRole:
 
-            if index.column() == 1:
+            if index.column() == 2:
                 return Qt.AlignLeft + Qt.AlignVCenter
             else:
                 return Qt.AlignHCenter + Qt.AlignVCenter
@@ -329,14 +327,13 @@ class MapDFM(DataFrameModel):
         h_header.setSectionResizeMode(1, QHeaderView.Stretch)
         h_header.setSectionResizeMode(2, QHeaderView.Stretch)
         h_header.setSectionResizeMode(3, QHeaderView.Fixed)
-        h_header.resizeSection(0, 70)
+        h_header.resizeSection(0, 40)
         h_header.resizeSection(1, 200)
         h_header.resizeSection(2, 200)
         h_header.resizeSection(3, 40)
         h_header.resizeSection(4, 40)
         v_header = self.tv.verticalHeader()
         v_header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.tv.setColumnHidden(0, True)
         self.tv.setColumnHidden(4, True)
 
     def data(self, index, role=Qt.DisplayRole):
@@ -350,7 +347,7 @@ class MapDFM(DataFrameModel):
         if role == Qt.DisplayRole:
             return str(val)
         elif role == Qt.TextAlignmentRole:
-            if index.column() == 3:
+            if index.column() == 0 or index.column() == 3:
                 return Qt.AlignHCenter + Qt.AlignVCenter
             else:
                 return Qt.AlignLeft + Qt.AlignVCenter
