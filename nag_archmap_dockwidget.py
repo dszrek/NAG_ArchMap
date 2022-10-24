@@ -26,10 +26,12 @@ import os
 import pandas as pd
 from .classes import PgConn, DokDFM, MapDFM
 
-from qgis.core import QgsProject
+from qgis.core import QgsProject, QgsCoordinateReferenceSystem
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import QMessageBox
+from qgis.utils import iface
+
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'nag_archmap_dockwidget_base.ui'))
@@ -76,6 +78,10 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def structure_check(self):
         """Sprawdzenie, czy w legendzie istnieje grupa 'NAG_ArchMap'"""
+        if len(self.proj.mapLayers()) == 0:
+            # QGIS nie ma otwartego projektu, tworzy nowy
+            iface.newProject(promptToSaveFlag=False)
+            self.proj.setCrs(QgsCoordinateReferenceSystem("EPSG:2180"))
         self.main_grp = self.root.findGroup("NAG_ArchMap")
         if not self.main_grp:
             # Utworzenie grupy systemowej, jeśli jej nie ma
