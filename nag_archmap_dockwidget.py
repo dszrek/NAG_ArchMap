@@ -28,6 +28,7 @@ from .classes import PgConn, DokDFM
 
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
+from qgis.PyQt.QtWidgets import QMessageBox
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'nag_archmap_dockwidget_base.ui'))
@@ -46,26 +47,119 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # http://doc.qt.io/qt-5/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.init_void = True
         self.init_tv_dok()
         self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
         self.setup_widgets()
+        self.dok_id = None
+        self.init_void = False
 
     def __setattr__(self, attr, val):
         """Przechwycenie zmiany atrybutu."""
         super().__setattr__(attr, val)
         if attr == "dok_df":
             # Aktualizacja zawartości tableview po zmianie w dok_df
-            self.dok_mdl.setDataFrame(self.dok_col(val))
+            self.tv_dok_unsel()  # Reset zaznaczenia w tv_dok
+            self.dok_mdl.setDataFrame(self.dok_col(val))  # Załadowanie danych do tv_dok
+        elif attr == "dok_id" and not self.init_void:
+            print(f"dok_id: {self.dok_id}")
+            self.sel_dok_attr_update()
+
+    def sel_dok_attr_update(self):
+        """Aktualizacja widget'ów wyświetlających atrybuty wybranej dokumentacji."""
+        labels = [self.l_cbdgid, self.l_dok_rok, self.l_tytul, self.l_nr_arch, self.l_zloza, self.l_tag]
+        if not self.dok_id:
+            self.stacked_dok.setCurrentIndex(0)
+            for label in labels:
+                label.setText("")
+        else:
+            self.attrs_for_sel_dok()
+            self.stacked_dok.setCurrentIndex(1)
+
+    def attrs_for_sel_dok(self):
+        """Zwraca listę wartości atrybutów wybranej dokumentacji."""
+        if not self.dok_id:
+            return None
+        sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
+        if len(sel_dok_df) == 0:
+            return None
+        self.l_cbdgid.setText(str(sel_dok_df['cbdg_id'].astype(int).values[0]))
+        self.l_dok_rok.setText(str(sel_dok_df['rok'].astype(int).values[0]))
+        self.l_tytul.setText(str(sel_dok_df['tytul'].astype(str).values[0]))
+        czy_kat = bool(sel_dok_df['czy_nr_kat'].astype(bool).values[0])
+        arch_type = "Nr kat.:" if czy_kat else "Nr inw.:"
+        self.l_nr_arch.setText(f"{arch_type} {str(sel_dok_df['nr_inw'].astype(str).values[0])} [NAG PIG-PIB]")
+        zl_df = self.zloza_from_dok()
+        if len(zl_df) == 0:
+            self.l_zloza.setText("")
+        else:
+            zl_txt = ""
+            for index in zl_df.to_records():
+                zl_txt = f"{zl_txt}{index[1]}  {index[2]}     "
+            self.l_zloza.setText(zl_txt)
+        tag_df = self.tags_from_dok()
+        if len(tag_df) == 0:
+            self.l_tag.setText("")
+        else:
+            tag_txt = ""
+            for index in tag_df.to_records():
+                tag_txt = f"{tag_txt}{index[1]}"
+            self.l_tag.setText(tag_txt)
+
+    def zloza_from_dok(self):
+        """Zwraca dataframe z numerami i nazwami złóż przypisanych do wybranej dokumentacji."""
+        empty_df = pd.DataFrame(columns=['midas_id', 'nazwa_zloza'])
+        db = PgConn()
+        sql = f"SELECT m.midas_id, m.t_zloze_nazwa FROM dokumentacje d INNER JOIN dokumentacje_midas dm ON d.dok_id = dm.dok_id INNER JOIN midas m ON m.midas_id = dm.midas_id WHERE d.dok_id = {self.dok_id};"
+        if db:
+            df = db.query_pd(sql, ['midas_id', 'nazwa_zloza'])
+            if isinstance(df, pd.DataFrame):
+                return df if len(df) > 0 else empty_df
+            else:
+                return empty_df
+        else:
+            return empty_df
+
+    def tags_from_dok(self):
+        """Zwraca dataframe z tagami przypisanymi do wybranej dokumentacji."""
+        empty_df = pd.DataFrame(columns=['tag'])
+        db = PgConn()
+        sql = f"SELECT t.t_tag FROM dokumentacje d INNER JOIN dokumentacje_tagi dt ON d.dok_id = dt.dok_id INNER JOIN tagi t ON t.tag_id = dt.tag_id WHERE d.dok_id = {self.dok_id};"
+        if db:
+            df = db.query_pd(sql, ['tag'])
+            if isinstance(df, pd.DataFrame):
+                return df if len(df) > 0 else empty_df
+            else:
+                return empty_df
+        else:
+            return empty_df
 
     def init_tv_dok(self):
         """Konfiguracja tableview dla listy dokumentacji."""
-        tv_dok_headers = ['nr inw', 'tytuł dokumentacji', 'rok']
-        temp_df = pd.DataFrame(columns=['nr inw', 'tytuł dokumentacji', 'rok'])
+        self.stacked_dok.setCurrentIndex(0)
+        tv_dok_headers = ['dok_id', 'tytuł dokumentacji', 'rok']
+        temp_df = pd.DataFrame(columns=['dok_id', 'tytuł dokumentacji', 'rok'])
         self.dok_mdl = DokDFM(df=temp_df, tv=self.tv_dok, col_names=tv_dok_headers)
+        self.tv_dok.selectionModel().selectionChanged.connect(self.tv_dok_sel_change)
+
+    def tv_dok_unsel(self, scroll_top=True):
+        """Odznaczenie wiersza w tv_dok po zmianie dok_df."""
+        sel_tv = self.tv_dok.selectionModel()
+        sel_tv.clearCurrentIndex()
+        sel_tv.clearSelection()
+        if scroll_top:
+            self.tv_dok.scrollToTop()
+        self.tv_dok.viewport().update()
+
+    def tv_dok_sel_change(self):
+        """Aktualizacja widget'ów po zmianie aktualnego wiersza w tv_dok."""
+        sel_tv = self.tv_dok.selectionModel()
+        sel_idx = sel_tv.currentIndex()
+        self.dok_id = None if sel_idx.row() == -1 else sel_idx.sibling(sel_idx.row(), 0).data()
 
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
-        return pd.concat(objs=[df.iloc[:,2], df.iloc[:,4:6]], axis=1)
+        return pd.concat(objs=[df.iloc[:,0], df.iloc[:,4:6]], axis=1)
 
     def setup_widgets(self):
         """Podłączenie widgetów do funkcji."""
@@ -85,6 +179,8 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             df = db.query_pd(sql, ['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
             if isinstance(df, pd.DataFrame):
                 return df if len(df) > 0 else empty_df
+            else:
+                return empty_df
         else:
             return empty_df
 
