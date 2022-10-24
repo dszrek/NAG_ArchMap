@@ -303,7 +303,57 @@ class DokDFM(DataFrameModel):
             if index.column() == 1:
                 return Qt.AlignLeft + Qt.AlignVCenter
             else:
-                return Qt.AlignVCenter + Qt.AlignHCenter
+                return Qt.AlignHCenter + Qt.AlignVCenter
+        elif role == DataFrameModel.ValueRole:
+            return val
+        if role == DataFrameModel.DtypeRole:
+            return dt
+        return QVariant()
+
+
+class MapDFM(DataFrameModel):
+    """Subklasa dataframemodel dla tableview wyświetlającą listę map wybranej dokumentacji."""
+
+    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], parent=None):
+        super().__init__(df, tv, col_names)
+        self.tv = tv  # Referencja do tableview
+        self.col_format()
+
+    def col_format(self):
+        """Formatowanie szerokości kolumn tableview'u."""
+        h_header = self.tv.horizontalHeader()
+        h_header.setMinimumSectionSize(1)
+        h_header.setFixedHeight(30)
+        h_header.setDefaultSectionSize(30)
+        h_header.setSectionResizeMode(QHeaderView.Interactive)
+        h_header.setSectionResizeMode(1, QHeaderView.Stretch)
+        h_header.setSectionResizeMode(2, QHeaderView.Stretch)
+        h_header.setSectionResizeMode(3, QHeaderView.Fixed)
+        h_header.resizeSection(0, 70)
+        h_header.resizeSection(1, 200)
+        h_header.resizeSection(2, 200)
+        h_header.resizeSection(3, 40)
+        h_header.resizeSection(4, 40)
+        v_header = self.tv.verticalHeader()
+        v_header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tv.setColumnHidden(0, True)
+        self.tv.setColumnHidden(4, True)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < self.rowCount() \
+            and 0 <= index.column() < self.columnCount()):
+            return QVariant()
+        row = self._dataframe.index[index.row()]
+        col = self._dataframe.columns[index.column()]
+        dt = self._dataframe[col].dtype
+        val = self._dataframe.iloc[row][col]
+        if role == Qt.DisplayRole:
+            return str(val)
+        elif role == Qt.TextAlignmentRole:
+            if index.column() == 3:
+                return Qt.AlignHCenter + Qt.AlignVCenter
+            else:
+                return Qt.AlignLeft + Qt.AlignVCenter
         elif role == DataFrameModel.ValueRole:
             return val
         if role == DataFrameModel.DtypeRole:

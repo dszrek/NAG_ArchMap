@@ -547,7 +547,23 @@ color: grey;</string>
      </widget>
     </item>
     <item>
-     <widget class="QTableView" name="tv_map"/>
+     <widget class="QTableView" name="tv_map">
+      <property name="styleSheet">
+       <string notr="true">QTableView::item
+{
+  padding: 10px;
+}</string>
+      </property>
+      <property name="selectionMode">
+       <enum>QAbstractItemView::SingleSelection</enum>
+      </property>
+      <property name="selectionBehavior">
+       <enum>QAbstractItemView::SelectRows</enum>
+      </property>
+      <attribute name="verticalHeaderVisible">
+       <bool>false</bool>
+      </attribute>
+     </widget>
     </item>
    </layout>
   </widget>

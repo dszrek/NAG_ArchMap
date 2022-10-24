@@ -24,7 +24,7 @@
 
 import os
 import pandas as pd
-from .classes import PgConn, DokDFM
+from .classes import PgConn, DokDFM, MapDFM
 
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
@@ -49,7 +49,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.setupUi(self)
         self.init_void = True
         self.init_tv_dok()
+        self.init_tv_map()
         self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
+        self.map_df = pd.DataFrame(columns=['map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
         self.setup_widgets()
         self.dok_id = None
         self.init_void = False
@@ -64,6 +66,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         elif attr == "dok_id" and not self.init_void:
             print(f"dok_id: {self.dok_id}")
             self.sel_dok_attr_update()
+            self.map_df_update()
 
     def sel_dok_attr_update(self):
         """Aktualizacja widget'ów wyświetlających atrybuty wybranej dokumentacji."""
@@ -106,6 +109,14 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 tag_txt = f"{tag_txt}{index[1]}"
             self.l_tag.setText(tag_txt)
 
+    def map_df_update(self):
+        """Aktualizuje zawartość map_df po zmianie wyboru dokumentacji."""
+        if not self.dok_id:
+            self.map_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+        else:
+            self.map_df = self.maps_for_sel_dok()
+        self.map_mdl.setDataFrame(self.map_df)  # Załadowanie danych do tv_map
+
     def zloza_from_dok(self):
         """Zwraca dataframe z numerami i nazwami złóż przypisanych do wybranej dokumentacji."""
         empty_df = pd.DataFrame(columns=['midas_id', 'nazwa_zloza'])
@@ -142,6 +153,12 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.dok_mdl = DokDFM(df=temp_df, tv=self.tv_dok, col_names=tv_dok_headers)
         self.tv_dok.selectionModel().selectionChanged.connect(self.tv_dok_sel_change)
 
+    def init_tv_map(self):
+        """Konfiguracja tableview dla listy map wybranej dokumentacji."""
+        tv_map_headers = ['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik']
+        temp_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+        self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers)
+
     def tv_dok_unsel(self, scroll_top=True):
         """Odznaczenie wiersza w tv_dok po zmianie dok_df."""
         sel_tv = self.tv_dok.selectionModel()
@@ -177,6 +194,20 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         sql = f"SELECT * FROM search_dok('{search_txt}', false)"
         if db:
             df = db.query_pd(sql, ['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
+            if isinstance(df, pd.DataFrame):
+                return df if len(df) > 0 else empty_df
+            else:
+                return empty_df
+        else:
+            return empty_df
+
+    def maps_for_sel_dok(self):
+        """Zwraca dataframe z danymi map przypisanych do wybranej dokumentacji."""
+        empty_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+        db = PgConn()
+        sql = f"SELECT map_id, t_map_nazwa, t_map_warstwa, i_map_rok, t_map_plik FROM public.mapy WHERE dok_id = {self.dok_id}"
+        if db:
+            df = db.query_pd(sql, ['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
             if isinstance(df, pd.DataFrame):
                 return df if len(df) > 0 else empty_df
             else:
