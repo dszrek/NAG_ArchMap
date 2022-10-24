@@ -286,6 +286,7 @@ class DokDFM(DataFrameModel):
         h_header.resizeSection(2, 40)
         v_header = self.tv.verticalHeader()
         v_header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tv.setColumnHidden(0, True)
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid() or not (0 <= index.row() < self.rowCount() \
