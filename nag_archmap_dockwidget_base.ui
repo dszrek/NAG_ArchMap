@@ -173,6 +173,9 @@
     </item>
     <item>
      <widget class="QTableView" name="tv_dok">
+      <property name="focusPolicy">
+       <enum>Qt::NoFocus</enum>
+      </property>
       <property name="styleSheet">
        <string notr="true">QTableView::item
 {
@@ -548,6 +551,9 @@ color: grey;</string>
     </item>
     <item>
      <widget class="QTableView" name="tv_map">
+      <property name="focusPolicy">
+       <enum>Qt::NoFocus</enum>
+      </property>
       <property name="styleSheet">
        <string notr="true">QTableView::item
 {
@@ -555,7 +561,7 @@ color: grey;</string>
 }</string>
       </property>
       <property name="selectionMode">
-       <enum>QAbstractItemView::SingleSelection</enum>
+       <enum>QAbstractItemView::NoSelection</enum>
       </property>
       <property name="selectionBehavior">
        <enum>QAbstractItemView::SelectRows</enum>
