@@ -26,7 +26,7 @@ import os
 import pandas as pd
 from .classes import PgConn, DokDFM, MapDFM
 
-from qgis.core import QgsProject, QgsCoordinateReferenceSystem
+from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import QMessageBox
@@ -36,6 +36,7 @@ from qgis.utils import iface
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'nag_archmap_dockwidget_base.ui'))
 
+CRS_1992 = QgsCoordinateReferenceSystem("EPSG:2180")
 
 class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
@@ -61,6 +62,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.setup_widgets()
         self.dok_id = None
         self.main_grp = None
+        self.dok_grp = None
         self.init_void = False
         self.structure_check()
 
@@ -81,7 +83,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if len(self.proj.mapLayers()) == 0:
             # QGIS nie ma otwartego projektu, tworzy nowy
             iface.newProject(promptToSaveFlag=False)
-            self.proj.setCrs(QgsCoordinateReferenceSystem("EPSG:2180"))
+            self.proj.setCrs(CRS_1992)
         self.main_grp = self.root.findGroup("NAG_ArchMap")
         if not self.main_grp:
             # Utworzenie grupy systemowej, jeśli jej nie ma
@@ -177,6 +179,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         tv_map_headers = ['ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
         temp_df = pd.DataFrame(columns=['ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik'])
         self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers)
+        self.tv_map.doubleClicked.connect(self.tv_map_clicked)
 
     def tv_dok_unsel(self, scroll_top=True):
         """Odznaczenie wiersza w tv_dok po zmianie dok_df."""
@@ -192,6 +195,35 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         sel_tv = self.tv_dok.selectionModel()
         sel_idx = sel_tv.currentIndex()
         self.dok_id = None if sel_idx.row() == -1 else sel_idx.sibling(sel_idx.row(), 0).data()
+
+    def tv_map_clicked(self):
+        """Dodawanie albo odejmowanie map w projekcie."""
+        sel_tv = self.tv_map.selectionModel()
+        sel_idx = sel_tv.currentIndex()
+        map_id = sel_idx.sibling(sel_idx.row(), 0).data()
+        sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
+        cbdg_id = sel_dok_df['cbdg_id'].values[0]
+        dok_grp = self.dok_grp_check(cbdg_id)
+        self.structure_check()
+        print(f"dok_grp: {dok_grp}")
+        path = sel_dok_df['path'].values[0]
+        file = sel_idx.sibling(sel_idx.row(), 4).data()
+        path_file = f"{path}\{file}"
+
+        lyr = QgsRasterLayer(path_file, map_id, "gdal")
+        lyr.setCrs(CRS_1992)
+        if lyr.isValid():
+            self.proj.addMapLayer(lyr, False)  # Dodaje warstwę bez pokazywania jej
+            dok_grp.addLayer(lyr)
+
+    def dok_grp_check(self, cbdg_id):
+        """Sprawdza, czy w legendzie grupa o nazwie równej cbdg_id i tworzy jeśli trzeba."""
+        root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
+        main_grp = root.findGroup("NAG_ArchMap")
+        dok_grp = main_grp.findGroup(str(cbdg_id))
+        if not dok_grp:
+            dok_grp = main_grp.insertGroup(0, str(cbdg_id))
+        return dok_grp
 
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
