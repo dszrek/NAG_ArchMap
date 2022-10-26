@@ -311,9 +311,10 @@ class DokDFM(DataFrameModel):
 class MapDFM(DataFrameModel):
     """Model dla tableview wyświetlającej listę map wybranej dokumentacji."""
 
-    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], parent=None):
+    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], dlg=None):
         super().__init__(df, tv, col_names)
         self.tv = tv  # Referencja do tableview
+        self.dlg = dlg
         self.col_format()
         self.tv.setItemDelegateForColumn(0, CheckBoxDelegate(self.tv))
 
@@ -364,6 +365,8 @@ class MapDFM(DataFrameModel):
     def setData(self, index, value, role):
         if role == Qt.EditRole and index.column() == 0:
             self._dataframe.iloc[index.row(),index.column()] = value
+            self.tv.viewport().update()
+            self.dlg.map_update_from_tv(self._dataframe)
             return True
 
     def flags(self, index):

@@ -53,6 +53,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.setupUi(self)
         self.proj = QgsProject.instance()  # Referencja do instancji projektu
         self.root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
+        self.canvas = iface.mapCanvas()  # Referencja do mapy
         self.le_filter_search.setVisible(False)
         self.init_void = True
         self.init_tv_dok()
@@ -145,7 +146,19 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 map_df_2 = map_df_1['map_id'].to_frame()
                 map_df_2['checkbox'] = map_df_2['map_id'].isin(map_list)
                 self.map_df = pd.concat(objs=[map_df_2.iloc[:,-1], map_df_1.iloc[:,:]], axis=1)
+        self.empty_dok_grp_check()
         self.map_mdl.setDataFrame(self.map_df)  # Załadowanie danych do tv_map
+
+    def empty_dok_grp_check(self):
+        """Kasuje w legendzie pustą grupę dokumentacji."""
+        temp_df = self.map_df[self.map_df['checkbox'] == True]
+        if len(temp_df) > 0:
+            # Grupa nie jest pusta, nie powinno się jej kasować
+            return
+        root = self.proj.layerTreeRoot()
+        main_grp = root.findGroup("NAG_ArchMap")
+        dok_grp = main_grp.findGroup(self.cbdg_id)
+        main_grp.removeChildNode(dok_grp)
 
     def maps_from_toc(self):
         """Przeszukuje legendę i zwraca listę załadowanych map."""
@@ -198,7 +211,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         tv_map_headers = ['', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
         temp_df = pd.DataFrame(columns=['checkbox', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik'])
         self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers, dlg=self)
-        self.tv_map.doubleClicked.connect(self.tv_map_clicked)
 
     def tv_dok_unsel(self, scroll_top=True):
         """Odznaczenie wiersza w tv_dok po zmianie dok_df."""
@@ -215,25 +227,32 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         sel_idx = sel_tv.currentIndex()
         self.dok_id = None if sel_idx.row() == -1 else sel_idx.sibling(sel_idx.row(), 0).data()
 
-    def tv_map_clicked(self):
-        """Dodawanie albo odejmowanie map w projekcie."""
-        sel_tv = self.tv_map.selectionModel()
-        sel_idx = sel_tv.currentIndex()
-        map_id = sel_idx.sibling(sel_idx.row(), 1).data()
-        sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
+    def maps_in_toc_update(self, add_list, del_list):
+        """Wczytanie i/lub usunięcie rastrów map z projektu po zmianie zrobionej z poziomu tv_map."""
         dok_grp = self.dok_grp_check()
-        path = sel_dok_df['path'].values[0]
-        file = sel_idx.sibling(sel_idx.row(), 5).data()
-        path_file = os.path.join(path, file)
-        lyr = QgsRasterLayer(path_file, map_id, "gdal")
-        lyr.setCrs(CRS_1992)
-        if lyr.isValid():
-            self.proj.addMapLayer(lyr, False)  # Dodaje warstwę bez pokazywania jej
-            dok_grp.addLayer(lyr)
-            lyr_node = self.root.findLayer(lyr.id())
-            lyr_node.setExpanded(False)
-        else:
-            QMessageBox.critical(None, "NAG_ArchMap", "Nie udało się dodać warstwy rastrowej!")
+        if len(del_list) > 0:
+            for map in del_list:
+                lyr = self.proj.mapLayersByName(str(map))[0]
+                if lyr:
+                    self.proj.removeMapLayers([lyr.id()])
+        if len(add_list) > 0:
+            sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
+            path = sel_dok_df['path'].values[0]
+            for map in add_list:
+                mask = self.map_df[self.map_df['map_id'].astype(int) == int(map)]
+                file = mask['plik'].values[0]
+                path_file = os.path.join(path, file)
+                lyr = QgsRasterLayer(path_file, str(map), "gdal")
+                lyr.setCrs(CRS_1992)
+                if lyr.isValid():
+                    self.proj.addMapLayer(lyr, False)  # Dodaje warstwę bez pokazywania jej
+                    dok_grp.addLayer(lyr)
+                    lyr_node = self.root.findLayer(lyr.id())
+                    lyr_node.setExpanded(False)
+                else:
+                    QMessageBox.critical(None, "NAG_ArchMap", f"Nie udało się dodać warstwy rastrowej (id: {map}).")
+        self.canvas.refresh()
+        self.map_df_update()
 
     def dok_grp_check(self):
         """Sprawdza, czy w legendzie grupa o nazwie równej cbdg_id i tworzy jeśli trzeba."""
@@ -257,6 +276,18 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         """Wyszukanie dokumentacji w db na podstawie zapytania sql."""
         search_txt = self.le_search.text()
         self.dok_df = self.dok_from_query(search_txt)
+
+    def map_update_from_tv(self, tv_df):
+        """Aktualizacja stanu map po zmianie w tv_map."""
+        tv_df = tv_df.rename(columns={'checkbox': 'checkbox_new'})
+        tv_df = pd.concat(objs=[tv_df.iloc[:,1], tv_df.iloc[:,0]], axis=1)
+        df = pd.merge(self.map_df, tv_df, on="map_id")
+        mask = df[df['checkbox'] != df['checkbox_new']]
+        add_df = mask[mask['checkbox_new'] == True]
+        add_list = add_df['map_id'].tolist()
+        del_df = mask[mask['checkbox_new'] == False]
+        del_list = del_df['map_id'].tolist()
+        self.maps_in_toc_update(add_list, del_list)
 
     def dok_from_query(self, search_txt):
         """Zwraca dataframe z danymi dokumentacji wybranych w kwerendzie."""
