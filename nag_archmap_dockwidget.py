@@ -67,6 +67,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.dok_grp = None
         self.init_void = False
         self.structure_check()
+        self.root.removedChildren.connect(self.node_removed)
 
     def __setattr__(self, attr, val):
         """Przechwycenie zmiany atrybutu."""
@@ -80,6 +81,10 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             self.sel_dok_attr_update()
             self.map_df_update()
 
+    def node_removed(self, node, idx_from, idx_to):
+        """Przeciwdziałanie rozsynchronizowaniu zawartości legendy i dataframe'ów."""
+        self.structure_check()
+
     def structure_check(self):
         """Sprawdzenie, czy w legendzie istnieje grupa 'NAG_ArchMap'"""
         if len(self.proj.mapLayers()) == 0:
@@ -90,6 +95,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if not self.main_grp:
             # Utworzenie grupy systemowej, jeśli jej nie ma
             self.main_grp = self.root.insertGroup(-1, "NAG_ArchMap")
+        self.map_df_update()  # Aktualizacja dataframe'ów
 
     def sel_dok_attr_update(self):
         """Aktualizacja widget'ów wyświetlających atrybuty wybranej dokumentacji."""
@@ -318,5 +324,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             return empty_df
 
     def closeEvent(self, event):
+        self.root.removedChildren.disconnect(self.node_removed)
         self.closingPlugin.emit()
         event.accept()
