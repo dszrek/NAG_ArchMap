@@ -26,13 +26,17 @@ import os
 import pandas as pd
 from .classes import PgConn, DokDFM, MapDFM
 
+from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import QMessageBox
+from qgis.utils import iface
+
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'nag_archmap_dockwidget_base.ui'))
 
+CRS_1992 = QgsCoordinateReferenceSystem("EPSG:2180")
 
 class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
@@ -47,15 +51,23 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # http://doc.qt.io/qt-5/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.proj = QgsProject.instance()  # Referencja do instancji projektu
+        self.root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
+        self.canvas = iface.mapCanvas()  # Referencja do mapy
         self.le_filter_search.setVisible(False)
         self.init_void = True
         self.init_tv_dok()
         self.init_tv_map()
         self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
-        self.map_df = pd.DataFrame(columns=['map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
+        self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
         self.setup_widgets()
         self.dok_id = None
+        self.cbdg_id = None
+        self.main_grp = None
+        self.dok_grp = None
         self.init_void = False
+        self.structure_check()
+        self.root.removedChildren.connect(self.node_removed)
 
     def __setattr__(self, attr, val):
         """Przechwycenie zmiany atrybutu."""
@@ -68,6 +80,22 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             print(f"dok_id: {self.dok_id}")
             self.sel_dok_attr_update()
             self.map_df_update()
+
+    def node_removed(self, node, idx_from, idx_to):
+        """Przeciwdziałanie rozsynchronizowaniu zawartości legendy i dataframe'ów."""
+        self.structure_check()
+
+    def structure_check(self):
+        """Sprawdzenie, czy w legendzie istnieje grupa 'NAG_ArchMap'"""
+        if len(self.proj.mapLayers()) == 0:
+            # QGIS nie ma otwartego projektu, tworzy nowy
+            iface.newProject(promptToSaveFlag=False)
+            self.proj.setCrs(CRS_1992)
+        self.main_grp = self.root.findGroup("NAG_ArchMap")
+        if not self.main_grp:
+            # Utworzenie grupy systemowej, jeśli jej nie ma
+            self.main_grp = self.root.insertGroup(-1, "NAG_ArchMap")
+        self.map_df_update()  # Aktualizacja dataframe'ów
 
     def sel_dok_attr_update(self):
         """Aktualizacja widget'ów wyświetlających atrybuty wybranej dokumentacji."""
@@ -87,7 +115,8 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
         if len(sel_dok_df) == 0:
             return None
-        self.l_cbdgid.setText(str(sel_dok_df['cbdg_id'].astype(int).values[0]))
+        self.cbdg_id = str(sel_dok_df['cbdg_id'].astype(int).values[0])
+        self.l_cbdgid.setText(self.cbdg_id)
         self.l_dok_rok.setText(str(sel_dok_df['rok'].astype(int).values[0]))
         self.l_tytul.setText(str(sel_dok_df['tytul'].astype(str).values[0]))
         czy_kat = bool(sel_dok_df['czy_nr_kat'].astype(bool).values[0])
@@ -113,10 +142,39 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def map_df_update(self):
         """Aktualizuje zawartość map_df po zmianie wyboru dokumentacji."""
         if not self.dok_id:
-            self.map_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+            self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
         else:
-            self.map_df = self.maps_for_sel_dok()
+            map_df_1 = self.maps_for_sel_dok()
+            if len(map_df_1) == 0:
+                self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+            else:
+                map_list = self.maps_from_toc()
+                map_df_2 = map_df_1['map_id'].to_frame()
+                map_df_2['checkbox'] = map_df_2['map_id'].isin(map_list)
+                self.map_df = pd.concat(objs=[map_df_2.iloc[:,-1], map_df_1.iloc[:,:]], axis=1)
+        self.empty_dok_grp_check()
         self.map_mdl.setDataFrame(self.map_df)  # Załadowanie danych do tv_map
+
+    def empty_dok_grp_check(self):
+        """Kasuje w legendzie pustą grupę dokumentacji."""
+        temp_df = self.map_df[self.map_df['checkbox'] == True]
+        if len(temp_df) > 0:
+            # Grupa nie jest pusta, nie powinno się jej kasować
+            return
+        root = self.proj.layerTreeRoot()
+        main_grp = root.findGroup("NAG_ArchMap")
+        dok_grp = main_grp.findGroup(self.cbdg_id)
+        main_grp.removeChildNode(dok_grp)
+
+    def maps_from_toc(self):
+        """Przeszukuje legendę i zwraca listę załadowanych map."""
+        if not self.cbdg_id:
+            return []
+        dok_grp = self.root.findGroup(str(self.cbdg_id))
+        if not dok_grp:
+            return []
+        layers = [child.layer().name() for child in dok_grp.children() if isinstance(child, QgsLayerTreeLayer)]
+        return layers
 
     def zloza_from_dok(self):
         """Zwraca dataframe z numerami i nazwami złóż przypisanych do wybranej dokumentacji."""
@@ -156,9 +214,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def init_tv_map(self):
         """Konfiguracja tableview dla listy map wybranej dokumentacji."""
-        tv_map_headers = ['ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
-        temp_df = pd.DataFrame(columns=['ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik'])
-        self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers)
+        tv_map_headers = ['', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
+        temp_df = pd.DataFrame(columns=['checkbox', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik'])
+        self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers, dlg=self)
 
     def tv_dok_unsel(self, scroll_top=True):
         """Odznaczenie wiersza w tv_dok po zmianie dok_df."""
@@ -175,6 +233,43 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         sel_idx = sel_tv.currentIndex()
         self.dok_id = None if sel_idx.row() == -1 else sel_idx.sibling(sel_idx.row(), 0).data()
 
+    def maps_in_toc_update(self, add_list, del_list):
+        """Wczytanie i/lub usunięcie rastrów map z projektu po zmianie zrobionej z poziomu tv_map."""
+        dok_grp = self.dok_grp_check()
+        if len(del_list) > 0:
+            for map in del_list:
+                lyr = self.proj.mapLayersByName(str(map))[0]
+                if lyr:
+                    self.proj.removeMapLayers([lyr.id()])
+        if len(add_list) > 0:
+            sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
+            path = sel_dok_df['path'].values[0]
+            for map in add_list:
+                mask = self.map_df[self.map_df['map_id'].astype(int) == int(map)]
+                file = mask['plik'].values[0]
+                path_file = os.path.join(path, file)
+                lyr = QgsRasterLayer(path_file, str(map), "gdal")
+                lyr.setCrs(CRS_1992)
+                if lyr.isValid():
+                    self.proj.addMapLayer(lyr, False)  # Dodaje warstwę bez pokazywania jej
+                    dok_grp.addLayer(lyr)
+                    lyr_node = self.root.findLayer(lyr.id())
+                    lyr_node.setExpanded(False)
+                else:
+                    QMessageBox.critical(None, "NAG_ArchMap", f"Nie udało się dodać warstwy rastrowej (id: {map}).")
+        self.canvas.refresh()
+        self.map_df_update()
+
+    def dok_grp_check(self):
+        """Sprawdza, czy w legendzie grupa o nazwie równej cbdg_id i tworzy jeśli trzeba."""
+        root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
+        main_grp = root.findGroup("NAG_ArchMap")
+        dok_grp = main_grp.findGroup(self.cbdg_id)
+        if not dok_grp:
+            dok_grp = main_grp.insertGroup(0, self.cbdg_id)
+        dok_grp.setExpanded(True)
+        return dok_grp
+
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
         return pd.concat(objs=[df.iloc[:,0:2], df.iloc[:,4:6]], axis=1)
@@ -187,6 +282,18 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         """Wyszukanie dokumentacji w db na podstawie zapytania sql."""
         search_txt = self.le_search.text()
         self.dok_df = self.dok_from_query(search_txt)
+
+    def map_update_from_tv(self, tv_df):
+        """Aktualizacja stanu map po zmianie w tv_map."""
+        tv_df = tv_df.rename(columns={'checkbox': 'checkbox_new'})
+        tv_df = pd.concat(objs=[tv_df.iloc[:,1], tv_df.iloc[:,0]], axis=1)
+        df = pd.merge(self.map_df, tv_df, on="map_id")
+        mask = df[df['checkbox'] != df['checkbox_new']]
+        add_df = mask[mask['checkbox_new'] == True]
+        add_list = add_df['map_id'].tolist()
+        del_df = mask[mask['checkbox_new'] == False]
+        del_list = del_df['map_id'].tolist()
+        self.maps_in_toc_update(add_list, del_list)
 
     def dok_from_query(self, search_txt):
         """Zwraca dataframe z danymi dokumentacji wybranych w kwerendzie."""
@@ -217,5 +324,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             return empty_df
 
     def closeEvent(self, event):
+        self.root.removedChildren.disconnect(self.node_removed)
         self.closingPlugin.emit()
         event.accept()

@@ -6,8 +6,8 @@ import psycopg2.extras
 import pandas as pd
 
 from configparser import ConfigParser
-from qgis.PyQt.QtCore import Qt, QAbstractTableModel, pyqtProperty, pyqtSlot, QVariant, QModelIndex
-from qgis.PyQt.QtWidgets import QMessageBox, QHeaderView
+from qgis.PyQt.QtCore import Qt, QEvent, QAbstractTableModel, pyqtProperty, pyqtSlot, QVariant, QModelIndex, QRect
+from qgis.PyQt.QtWidgets import QMessageBox, QHeaderView, QItemDelegate
 
 DB_SOURCE = "PGI"
 
@@ -297,7 +297,6 @@ class DokDFM(DataFrameModel):
         if role == Qt.DisplayRole:
             return str(val)
         elif role == Qt.TextAlignmentRole:
-
             if index.column() == 2:
                 return Qt.AlignLeft + Qt.AlignVCenter
             else:
@@ -310,12 +309,14 @@ class DokDFM(DataFrameModel):
 
 
 class MapDFM(DataFrameModel):
-    """Subklasa dataframemodel dla tableview wyświetlającą listę map wybranej dokumentacji."""
+    """Model dla tableview wyświetlającej listę map wybranej dokumentacji."""
 
-    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], parent=None):
+    def __init__(self, df=pd.DataFrame(), tv=None, col_names=[], dlg=None):
         super().__init__(df, tv, col_names)
         self.tv = tv  # Referencja do tableview
+        self.dlg = dlg
         self.col_format()
+        self.tv.setItemDelegateForColumn(0, CheckBoxDelegate(self.tv))
 
     def col_format(self):
         """Formatowanie szerokości kolumn tableview'u."""
@@ -324,17 +325,19 @@ class MapDFM(DataFrameModel):
         h_header.setFixedHeight(30)
         h_header.setDefaultSectionSize(30)
         h_header.setSectionResizeMode(QHeaderView.Interactive)
-        h_header.setSectionResizeMode(1, QHeaderView.Stretch)
+        h_header.setSectionResizeMode(0, QHeaderView.Fixed)
+        h_header.setSectionResizeMode(1, QHeaderView.Fixed)
         h_header.setSectionResizeMode(2, QHeaderView.Stretch)
-        h_header.setSectionResizeMode(3, QHeaderView.Fixed)
-        h_header.resizeSection(0, 40)
-        h_header.resizeSection(1, 200)
+        h_header.setSectionResizeMode(3, QHeaderView.Stretch)
+        h_header.setSectionResizeMode(4, QHeaderView.Fixed)
+        h_header.resizeSection(0, 36)
+        h_header.resizeSection(1, 50)
         h_header.resizeSection(2, 200)
-        h_header.resizeSection(3, 40)
+        h_header.resizeSection(3, 200)
         h_header.resizeSection(4, 40)
         v_header = self.tv.verticalHeader()
         v_header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.tv.setColumnHidden(4, True)
+        self.tv.setColumnHidden(5, True)
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid() or not (0 <= index.row() < self.rowCount() \
@@ -345,9 +348,11 @@ class MapDFM(DataFrameModel):
         dt = self._dataframe[col].dtype
         val = self._dataframe.iloc[row][col]
         if role == Qt.DisplayRole:
+            if index.column() == 0:
+                return bool(val)
             return str(val)
         elif role == Qt.TextAlignmentRole:
-            if index.column() == 0 or index.column() == 3:
+            if index.column() == 0 or index.column() == 1 or index.column() == 4:
                 return Qt.AlignHCenter + Qt.AlignVCenter
             else:
                 return Qt.AlignLeft + Qt.AlignVCenter
@@ -356,3 +361,42 @@ class MapDFM(DataFrameModel):
         if role == DataFrameModel.DtypeRole:
             return dt
         return QVariant()
+
+    def setData(self, index, value, role):
+        if role == Qt.EditRole and index.column() == 0:
+            self._dataframe.iloc[index.row(),index.column()] = value
+            self.tv.viewport().update()
+            self.dlg.map_update_from_tv(self._dataframe)
+            return True
+
+    def flags(self, index):
+        if index.column() == 0:
+            return Qt.ItemIsSelectable|Qt.ItemIsEnabled|Qt.ItemIsEditable
+        return Qt.ItemIsEnabled
+
+
+class CheckBoxDelegate(QItemDelegate):
+    """Delegate tworzący kolumnę checkbox'ów w tableview."""
+    def __init__(self, parent):
+        QItemDelegate.__init__(self, parent)
+        self.size = 15
+
+    def paint(self, painter, option, index):
+        """Utworzenie wyśrodkowanego checkbox'a bez label'a."""
+        left = option.rect.x() + (option.rect.width() - self.size) / 2
+        top = option.rect.y() + (option.rect.height() - self.size) / 2
+        rect = QRect(int(left), int(top), self.size, self.size)
+        self.drawCheck(painter, option, rect, Qt.Unchecked if not index.data() else Qt.Checked)
+
+    def editorEvent(self, event, model, option, index):
+        """Zmiana wartości komórki w modelu po kliknięciu checkbox'a."""
+        if not int(index.flags() & Qt.ItemIsEditable) > 0:
+            return False
+        if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+            self.setModelData(None, model, index)
+            return True
+        return False
+
+    def setModelData(self, editor, model, index):
+        """Ustalenie wartości komórki."""
+        model.setData(index, False if index.data() else True, Qt.EditRole)
