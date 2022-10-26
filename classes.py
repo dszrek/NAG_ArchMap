@@ -330,7 +330,7 @@ class MapDFM(DataFrameModel):
         h_header.setSectionResizeMode(3, QHeaderView.Stretch)
         h_header.setSectionResizeMode(4, QHeaderView.Fixed)
         h_header.resizeSection(0, 36)
-        h_header.resizeSection(1, 40)
+        h_header.resizeSection(1, 50)
         h_header.resizeSection(2, 200)
         h_header.resizeSection(3, 200)
         h_header.resizeSection(4, 40)
@@ -382,7 +382,7 @@ class CheckBoxDelegate(QItemDelegate):
         """Utworzenie wyśrodkowanego checkbox'a bez label'a."""
         left = option.rect.x() + (option.rect.width() - self.size) / 2
         top = option.rect.y() + (option.rect.height() - self.size) / 2
-        rect = QRect(left, top, self.size, self.size)
+        rect = QRect(int(left), int(top), self.size, self.size)
         self.drawCheck(painter, option, rect, Qt.Unchecked if not index.data() else Qt.Checked)
 
     def editorEvent(self, event, model, option, index):

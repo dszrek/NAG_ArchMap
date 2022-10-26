@@ -26,7 +26,7 @@ import os
 import pandas as pd
 from .classes import PgConn, DokDFM, MapDFM
 
-from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer
+from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.PyQt import QtGui, QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import QMessageBox
@@ -61,6 +61,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
         self.setup_widgets()
         self.dok_id = None
+        self.cbdg_id = None
         self.main_grp = None
         self.dok_grp = None
         self.init_void = False
@@ -107,7 +108,8 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
         if len(sel_dok_df) == 0:
             return None
-        self.l_cbdgid.setText(str(sel_dok_df['cbdg_id'].astype(int).values[0]))
+        self.cbdg_id = str(sel_dok_df['cbdg_id'].astype(int).values[0])
+        self.l_cbdgid.setText(self.cbdg_id)
         self.l_dok_rok.setText(str(sel_dok_df['rok'].astype(int).values[0]))
         self.l_tytul.setText(str(sel_dok_df['tytul'].astype(str).values[0]))
         czy_kat = bool(sel_dok_df['czy_nr_kat'].astype(bool).values[0])
@@ -135,9 +137,25 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if not self.dok_id:
             self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
         else:
-            self.map_df = self.maps_for_sel_dok()
-            print(self.map_df)
+            map_df_1 = self.maps_for_sel_dok()
+            if len(map_df_1) == 0:
+                self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+            else:
+                map_list = self.maps_from_toc()
+                map_df_2 = map_df_1['map_id'].to_frame()
+                map_df_2['checkbox'] = map_df_2['map_id'].isin(map_list)
+                self.map_df = pd.concat(objs=[map_df_2.iloc[:,-1], map_df_1.iloc[:,:]], axis=1)
         self.map_mdl.setDataFrame(self.map_df)  # Załadowanie danych do tv_map
+
+    def maps_from_toc(self):
+        """Przeszukuje legendę i zwraca listę załadowanych map."""
+        if not self.cbdg_id:
+            return []
+        dok_grp = self.root.findGroup(str(self.cbdg_id))
+        if not dok_grp:
+            return []
+        layers = [child.layer().name() for child in dok_grp.children() if isinstance(child, QgsLayerTreeLayer)]
+        return layers
 
     def zloza_from_dok(self):
         """Zwraca dataframe z numerami i nazwami złóż przypisanych do wybranej dokumentacji."""
@@ -177,10 +195,10 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def init_tv_map(self):
         """Konfiguracja tableview dla listy map wybranej dokumentacji."""
-        tv_map_headers = ['checkbox', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
+        tv_map_headers = ['', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik']
         temp_df = pd.DataFrame(columns=['checkbox', 'ID', 'Tytuł mapy', 'Warstwa mapy', 'Rok', 'plik'])
-        self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers)
-        # self.tv_map.doubleClicked.connect(self.tv_map_clicked)
+        self.map_mdl = MapDFM(df=temp_df, tv=self.tv_map, col_names=tv_map_headers, dlg=self)
+        self.tv_map.doubleClicked.connect(self.tv_map_clicked)
 
     def tv_dok_unsel(self, scroll_top=True):
         """Odznaczenie wiersza w tv_dok po zmianie dok_df."""
@@ -201,29 +219,30 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         """Dodawanie albo odejmowanie map w projekcie."""
         sel_tv = self.tv_map.selectionModel()
         sel_idx = sel_tv.currentIndex()
-        map_id = sel_idx.sibling(sel_idx.row(), 0).data()
+        map_id = sel_idx.sibling(sel_idx.row(), 1).data()
         sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
-        cbdg_id = sel_dok_df['cbdg_id'].values[0]
-        dok_grp = self.dok_grp_check(cbdg_id)
-        self.structure_check()
-        print(f"dok_grp: {dok_grp}")
+        dok_grp = self.dok_grp_check()
         path = sel_dok_df['path'].values[0]
-        file = sel_idx.sibling(sel_idx.row(), 4).data()
-        path_file = f"{path}\{file}"
-
+        file = sel_idx.sibling(sel_idx.row(), 5).data()
+        path_file = os.path.join(path, file)
         lyr = QgsRasterLayer(path_file, map_id, "gdal")
         lyr.setCrs(CRS_1992)
         if lyr.isValid():
             self.proj.addMapLayer(lyr, False)  # Dodaje warstwę bez pokazywania jej
             dok_grp.addLayer(lyr)
+            lyr_node = self.root.findLayer(lyr.id())
+            lyr_node.setExpanded(False)
+        else:
+            QMessageBox.critical(None, "NAG_ArchMap", "Nie udało się dodać warstwy rastrowej!")
 
-    def dok_grp_check(self, cbdg_id):
+    def dok_grp_check(self):
         """Sprawdza, czy w legendzie grupa o nazwie równej cbdg_id i tworzy jeśli trzeba."""
         root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
         main_grp = root.findGroup("NAG_ArchMap")
-        dok_grp = main_grp.findGroup(str(cbdg_id))
+        dok_grp = main_grp.findGroup(self.cbdg_id)
         if not dok_grp:
-            dok_grp = main_grp.insertGroup(0, str(cbdg_id))
+            dok_grp = main_grp.insertGroup(0, self.cbdg_id)
+        dok_grp.setExpanded(True)
         return dok_grp
 
     def dok_col(self, df):
@@ -255,11 +274,11 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def maps_for_sel_dok(self):
         """Zwraca dataframe z danymi map przypisanych do wybranej dokumentacji."""
-        empty_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+        empty_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
         db = PgConn()
-        sql = f"SELECT False as checkbox, map_id, t_map_nazwa, t_map_warstwa, i_map_rok, t_map_plik FROM public.mapy WHERE dok_id = {self.dok_id}"
+        sql = f"SELECT map_id, t_map_nazwa, t_map_warstwa, i_map_rok, t_map_plik FROM public.mapy WHERE dok_id = {self.dok_id}"
         if db:
-            df = db.query_pd(sql, ['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
+            df = db.query_pd(sql, ['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
             if isinstance(df, pd.DataFrame):
                 return df if len(df) > 0 else empty_df
             else:
