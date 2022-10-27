@@ -1,6 +1,13 @@
 # Changelog (dziennik zmian):
 
+## [0.3.0] - 2022-10-27
+
+### Zmieniono
+- Nazwy wczytywanych do projektu warstw rastrowych map nie są już ich numerami ID, ale pochodzą od tytułu mapy.
+- Nazwy tworzonych w legendzie projektu grup warstw, które grupują mapy z danej dokumentacji nie pochodzą już od nr CBDG, ale tworzone są z kombinacji słowa kluczowego (tagu) i roku wykonania dokumentacji.
+
 ## [0.2.0] - 2022-10-26
+
 ### Dodano
 - Przed uruchomieniem wtyczki sprawdzany jest dostęp do sieci wewnętrznej PIG-PIB oraz uprawnienia odczytu folderu "\\pgi.local\pig_dfs2\Projekty\CAG\Dokumenty CAG" i jego podfolderów. Brak powyższych uniemożliwia uruchomienie wtyczki.
 - Uruchamianie wtyczki z pustym lub otwartym "własnym" plikiem projektowym. Po uruchomieniu wtyczki tworzy się w legendzie projektu (drzewko w panelu Warstwy) grupa warstw "NAG_ArchMap", do której wczytywane są warstwy rastrowe z plikami .jpg (mapami). Jeśli w otwartym projekcie znajduje się już grupa "NAG_ArchMap", wtyczka się z nią zsynchronizuje.
