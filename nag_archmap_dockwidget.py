@@ -28,7 +28,7 @@ from .classes import PgConn, DokDFM, MapDFM
 
 from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.PyQt import QtGui, QtWidgets, uic
-from qgis.PyQt.QtCore import pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal, QTimer
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.utils import iface
 
@@ -66,6 +66,10 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.main_grp = None
         self.dok_grp = None
         self.init_void = False
+        self.timer = None
+        self.waiting = False
+        self.tick = None
+        self.tack = None
         self.structure_check()
         self.root.removedChildren.connect(self.node_removed)
 
@@ -83,10 +87,40 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def node_removed(self, node, idx_from, idx_to):
         """Przeciwdziałanie rozsynchronizowaniu zawartości legendy i dataframe'ów."""
-        self.structure_check()
+        self.wait_set()
+
+    def wait_set(self):
+        """Ograniczenie odbierania wielu sygnałów 'removedChildren' przez zastosowanie stopera."""
+        if self.waiting:
+            # Blokada jest już włączona
+            self.tick += 1
+            return
+        if not self.waiting:
+            # Włączanie blokady
+            self.waiting = True
+            self.tick = 1
+            self.tack = 0
+            self.timer = QTimer()
+            self.timer.setInterval(300)
+            self.timer.timeout.connect(self.wait_check)
+            self.timer.start()
+
+    def wait_check(self):
+        """Zatrzymanie stopera, gdy wielokrotne sygnały 'removeChildren' ustały, następnie odpalenie funkcji 'structure_check'."""
+        if self.tick != self.tack:
+            self.tack = self.tick
+        else:
+            self.waiting = False
+            if self.timer:
+                self.timer.stop()
+                self.timer = None
+            self.tick = None
+            self.tack = None
+            self.structure_check()
 
     def structure_check(self):
         """Sprawdzenie, czy w legendzie istnieje grupa 'NAG_ArchMap'"""
+        print("[structure_check]")
         if len(self.proj.mapLayers()) == 0:
             # QGIS nie ma otwartego projektu, tworzy nowy
             iface.newProject(promptToSaveFlag=False)
@@ -163,17 +197,18 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             return
         root = self.proj.layerTreeRoot()
         main_grp = root.findGroup("NAG_ArchMap")
-        dok_grp = main_grp.findGroup(self.cbdg_id)
-        main_grp.removeChildNode(dok_grp)
+        dok_grp = self.find_group_node_by_property()
+        if dok_grp:
+            main_grp.removeChildNode(dok_grp)
 
     def maps_from_toc(self):
         """Przeszukuje legendę i zwraca listę załadowanych map."""
         if not self.cbdg_id:
             return []
-        dok_grp = self.root.findGroup(str(self.cbdg_id))
+        dok_grp = self.find_group_node_by_property()
         if not dok_grp:
             return []
-        layers = [child.layer().name() for child in dok_grp.children() if isinstance(child, QgsLayerTreeLayer)]
+        layers = [child.customProperty('map_id') for child in dok_grp.children() if isinstance(child, QgsLayerTreeLayer)]
         return layers
 
     def zloza_from_dok(self):
@@ -238,37 +273,62 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         dok_grp = self.dok_grp_check()
         if len(del_list) > 0:
             for map in del_list:
-                lyr = self.proj.mapLayersByName(str(map))[0]
-                if lyr:
-                    self.proj.removeMapLayers([lyr.id()])
+                lyr_node = self.find_layer_node_by_property(dok_grp, map)
+                if lyr_node:
+                    self.proj.removeMapLayers([lyr_node.layerId()])
         if len(add_list) > 0:
             sel_dok_df = self.dok_df[self.dok_df['dok_id'] == int(self.dok_id)]
             path = sel_dok_df['path'].values[0]
             for map in add_list:
                 mask = self.map_df[self.map_df['map_id'].astype(int) == int(map)]
+                lyr_name = mask['tytuł mapy'].values[0]
                 file = mask['plik'].values[0]
                 path_file = os.path.join(path, file)
-                lyr = QgsRasterLayer(path_file, str(map), "gdal")
+                lyr = QgsRasterLayer(path_file, str(lyr_name), "gdal")
                 lyr.setCrs(CRS_1992)
                 if lyr.isValid():
                     self.proj.addMapLayer(lyr, False)  # Dodaje warstwę bez pokazywania jej
                     dok_grp.addLayer(lyr)
                     lyr_node = self.root.findLayer(lyr.id())
+                    lyr_node.setCustomProperty('map_id', map)
                     lyr_node.setExpanded(False)
                 else:
                     QMessageBox.critical(None, "NAG_ArchMap", f"Nie udało się dodać warstwy rastrowej (id: {map}).")
         self.canvas.refresh()
         self.map_df_update()
 
+    def find_layer_node_by_property(self, group, val):
+        """Przeszukuje wszystkie warstwy projektu i zwraca tę, która ma poszukiwaną wartość customProperty 'map_id'."""
+        for lyr in group.findLayers():
+            if lyr.customProperty('map_id') == val:
+                return lyr
+
+    def find_group_node_by_property(self):
+        """Przeszukuje wszystkie grupy projektu i zwraca tę, która ma poszukiwaną wartość customProperty 'cbdg_id'."""
+        if not self.dok_id:
+            return
+        root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
+        main_grp = root.findGroup("NAG_ArchMap")
+        for grp in main_grp.findGroups():
+            if grp.customProperty('dok_id') == self.dok_id:
+                return grp
+
     def dok_grp_check(self):
         """Sprawdza, czy w legendzie grupa o nazwie równej cbdg_id i tworzy jeśli trzeba."""
         root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
         main_grp = root.findGroup("NAG_ArchMap")
-        dok_grp = main_grp.findGroup(self.cbdg_id)
+        dok_grp = self.find_group_node_by_property()
         if not dok_grp:
-            dok_grp = main_grp.insertGroup(0, self.cbdg_id)
+            dok_grp = main_grp.insertGroup(0, self.create_group_name())
+            dok_grp.setCustomProperty('dok_id', self.dok_id)
         dok_grp.setExpanded(True)
         return dok_grp
+
+    def create_group_name(self):
+        """Zwraca nazwę grupy utworzoną ze słowa kluczowego i roku wykonania dokumentacji."""
+        tag_txt = self.l_tag.text()
+        rok_txt = self.l_dok_rok.text()
+        return f"{tag_txt} ({rok_txt} r.)"
 
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
