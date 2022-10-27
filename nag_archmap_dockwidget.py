@@ -163,14 +163,15 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             return
         root = self.proj.layerTreeRoot()
         main_grp = root.findGroup("NAG_ArchMap")
-        dok_grp = main_grp.findGroup(self.cbdg_id)
-        main_grp.removeChildNode(dok_grp)
+        dok_grp = self.find_group_node_by_property()
+        if dok_grp:
+            main_grp.removeChildNode(dok_grp)
 
     def maps_from_toc(self):
         """Przeszukuje legendę i zwraca listę załadowanych map."""
         if not self.cbdg_id:
             return []
-        dok_grp = self.root.findGroup(str(self.cbdg_id))
+        dok_grp = self.find_group_node_by_property()
         if not dok_grp:
             return []
         layers = [child.customProperty('map_id') for child in dok_grp.children() if isinstance(child, QgsLayerTreeLayer)]
@@ -268,15 +269,32 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             if lyr.customProperty('map_id') == val:
                 return lyr
 
+    def find_group_node_by_property(self):
+        """Przeszukuje wszystkie grupy projektu i zwraca tę, która ma poszukiwaną wartość customProperty 'cbdg_id'."""
+        if not self.dok_id:
+            return
+        root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
+        main_grp = root.findGroup("NAG_ArchMap")
+        for grp in main_grp.findGroups():
+            if grp.customProperty('dok_id') == self.dok_id:
+                return grp
+
     def dok_grp_check(self):
         """Sprawdza, czy w legendzie grupa o nazwie równej cbdg_id i tworzy jeśli trzeba."""
         root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
         main_grp = root.findGroup("NAG_ArchMap")
-        dok_grp = main_grp.findGroup(self.cbdg_id)
+        dok_grp = self.find_group_node_by_property()
         if not dok_grp:
-            dok_grp = main_grp.insertGroup(0, self.cbdg_id)
+            dok_grp = main_grp.insertGroup(0, self.create_group_name())
+            dok_grp.setCustomProperty('dok_id', self.dok_id)
         dok_grp.setExpanded(True)
         return dok_grp
+
+    def create_group_name(self):
+        """Zwraca nazwę grupy utworzoną ze słowa kluczowego i roku wykonania dokumentacji."""
+        tag_txt = self.l_tag.text()
+        rok_txt = self.l_dok_rok.text()
+        return f"{tag_txt} ({rok_txt} r.)"
 
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
