@@ -28,7 +28,7 @@ from .classes import PgConn, DokDFM, MapDFM
 
 from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.PyQt import QtGui, QtWidgets, uic
-from qgis.PyQt.QtCore import pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal, QTimer
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.utils import iface
 
@@ -66,6 +66,10 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.main_grp = None
         self.dok_grp = None
         self.init_void = False
+        self.timer = None
+        self.waiting = False
+        self.tick = None
+        self.tack = None
         self.structure_check()
         self.root.removedChildren.connect(self.node_removed)
 
@@ -83,10 +87,40 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     def node_removed(self, node, idx_from, idx_to):
         """Przeciwdziałanie rozsynchronizowaniu zawartości legendy i dataframe'ów."""
-        self.structure_check()
+        self.wait_set()
+
+    def wait_set(self):
+        """Ograniczenie odbierania wielu sygnałów 'removedChildren' przez zastosowanie stopera."""
+        if self.waiting:
+            # Blokada jest już włączona
+            self.tick += 1
+            return
+        if not self.waiting:
+            # Włączanie blokady
+            self.waiting = True
+            self.tick = 1
+            self.tack = 0
+            self.timer = QTimer()
+            self.timer.setInterval(300)
+            self.timer.timeout.connect(self.wait_check)
+            self.timer.start()
+
+    def wait_check(self):
+        """Zatrzymanie stopera, gdy wielokrotne sygnały 'removeChildren' ustały, następnie odpalenie funkcji 'structure_check'."""
+        if self.tick != self.tack:
+            self.tack = self.tick
+        else:
+            self.waiting = False
+            if self.timer:
+                self.timer.stop()
+                self.timer = None
+            self.tick = None
+            self.tack = None
+            self.structure_check()
 
     def structure_check(self):
         """Sprawdzenie, czy w legendzie istnieje grupa 'NAG_ArchMap'"""
+        print("[structure_check]")
         if len(self.proj.mapLayers()) == 0:
             # QGIS nie ma otwartego projektu, tworzy nowy
             iface.newProject(promptToSaveFlag=False)
