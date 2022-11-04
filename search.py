@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 from qgis.gui import QgsFilterLineEdit
-from qgis.PyQt.QtCore import Qt, QSize
+from qgis.PyQt.QtCore import Qt, QSize, QModelIndex
 from qgis.PyQt.QtWidgets import QFrame, QVBoxLayout, QCompleter
 from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem, QIcon
 
@@ -31,12 +31,18 @@ class DokFromTextSearcher(QFrame):
         self.completer.popup().setIconSize(QSize(69, 25))
         self.completer.setModel(self.create_index_model())
         self.le_search.setCompleter(self.completer)
+        # Połączenia:
+        self.completer.activated[QModelIndex].connect(self.completer_activated)
         # Kompozycja:
         lay = QVBoxLayout()
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         lay.addWidget(self.le_search)
         self.setLayout(lay)
+
+    def completer_activated(self, index):
+        """Odpalony po wyborze elementu z completer'a."""
+        print(f"completer_activated: {index.data()}, {index.sibling(index.row(), 1).data()}")
 
     def dataindex_from_db(self):
         """Zwraca dataframe z pobranymi z db indeksami wszystkich dokumentacji."""
@@ -54,6 +60,7 @@ class DokFromTextSearcher(QFrame):
             tdf['val'] = tdf['val'].astype(str)
             tdf['cat'] = cat[1]
             df = pd.concat([df, tdf], axis=0)
+        # Quasi-naturalne sortowanie, bez biblioteki 'natsort':
         df[['_str', '_int']] = df['val'].str.extract(r'([A-Za-zżźćńółęąśŻŹĆĄŚĘŁÓŃ]*)(\d*)')
         df['_int'] = pd.to_numeric(df['_int'], errors='coerce')
         df = df.sort_values(by=['_str', '_int'], ignore_index=True).drop(columns=['_str', '_int'])
@@ -61,9 +68,12 @@ class DokFromTextSearcher(QFrame):
 
     def create_index_model(self):
         """W oparciu o dataframe z indeksami dokumentacji (self.df) tworzy model danych do zasilenia QCompleter'a."""
-        model = QStandardItemModel(len(self.df), 1)
+        model = QStandardItemModel(len(self.df), 2)
         for index in self.df.to_records():
-            item = QStandardItem(index[1])
-            item.setIcon(QIcon(f"{ICON_PATH}{index[2]}.png"))
-            model.setItem(index[0], 0, item)
+            item_1 = QStandardItem(index[1])
+            item_1.setIcon(QIcon(f"{ICON_PATH}{index[2]}.png"))
+            item_1.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            item_2 = QStandardItem(index[2])
+            model.setItem(index[0], 0, item_1)
+            model.setItem(index[0], 1, item_2)
         return model
