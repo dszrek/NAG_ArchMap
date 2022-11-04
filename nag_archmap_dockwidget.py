@@ -26,6 +26,7 @@ import os
 import pandas as pd
 
 from .main import df_from_db
+from .search import DokFromTextSearcher
 from .classes import DokDFM, MapDFM
 
 from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer, QgsLayerTreeLayer
@@ -56,7 +57,10 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.proj = QgsProject.instance()  # Referencja do instancji projektu
         self.root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
         self.canvas = iface.mapCanvas()  # Referencja do mapy
-        self.le_filter_search.setVisible(False)
+        self.frm_search_1.setVisible(False)
+        self.frm_search_2.setVisible(False)
+        self.txt_search = DokFromTextSearcher(self)
+        self.frm_search.layout().addWidget(self.txt_search)
         self.init_void = True
         self.init_tv_dok()
         self.init_tv_map()
@@ -219,34 +223,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         layers = [child.customProperty('map_id') for child in dok_grp.children() if isinstance(child, QgsLayerTreeLayer)]
         return layers
 
-    def zloza_from_dok(self):
-        """Zwraca dataframe z numerami i nazwami złóż przypisanych do wybranej dokumentacji."""
-        empty_df = pd.DataFrame(columns=['midas_id', 'nazwa_zloza'])
-        db = PgConn()
-        sql = f"SELECT m.midas_id, m.t_zloze_nazwa FROM dokumentacje d INNER JOIN dokumentacje_midas dm ON d.dok_id = dm.dok_id INNER JOIN midas m ON m.midas_id = dm.midas_id WHERE d.dok_id = {self.dok_id};"
-        if db:
-            df = db.query_pd(sql, ['midas_id', 'nazwa_zloza'])
-            if isinstance(df, pd.DataFrame):
-                return df if len(df) > 0 else empty_df
-            else:
-                return empty_df
-        else:
-            return empty_df
-
-    def tags_from_dok(self):
-        """Zwraca dataframe z tagami przypisanymi do wybranej dokumentacji."""
-        empty_df = pd.DataFrame(columns=['tag'])
-        db = PgConn()
-        sql = f"SELECT t.t_tag FROM dokumentacje d INNER JOIN dokumentacje_tagi dt ON d.dok_id = dt.dok_id INNER JOIN tagi t ON t.tag_id = dt.tag_id WHERE d.dok_id = {self.dok_id};"
-        if db:
-            df = db.query_pd(sql, ['tag'])
-            if isinstance(df, pd.DataFrame):
-                return df if len(df) > 0 else empty_df
-            else:
-                return empty_df
-        else:
-            return empty_df
-
     def init_tv_dok(self):
         """Konfiguracja tableview dla listy dokumentacji."""
         self.stacked_dok.setCurrentIndex(0)
@@ -366,6 +342,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.maps_in_toc_update(add_list, del_list)
 
     def closeEvent(self, event):
-        self.root.removedChildren.disconnect(self.node_removed)
+        try:
+            self.root.removedChildren.disconnect(self.node_removed)
+        except:
+            pass
         self.closingPlugin.emit()
         event.accept()
