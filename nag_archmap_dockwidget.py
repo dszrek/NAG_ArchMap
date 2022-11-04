@@ -24,7 +24,9 @@
 
 import os
 import pandas as pd
-from .classes import PgConn, DokDFM, MapDFM
+
+from .main import df_from_db
+from .classes import DokDFM, MapDFM
 
 from qgis.core import QgsProject, QgsCoordinateReferenceSystem, QgsRasterLayer, QgsLayerTreeLayer
 from qgis.PyQt import QtGui, QtWidgets, uic
@@ -156,7 +158,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         czy_kat = bool(sel_dok_df['czy_nr_kat'].astype(bool).values[0])
         arch_type = "Nr kat.:" if czy_kat else "Nr inw.:"
         self.l_nr_arch.setText(f"{arch_type} {str(sel_dok_df['nr_inw'].astype(str).values[0])} [NAG PIG-PIB]")
-        zl_df = self.zloza_from_dok()
+        sql = f"SELECT m.midas_id, m.t_zloze_nazwa FROM dokumentacje d INNER JOIN dokumentacje_midas dm ON d.dok_id = dm.dok_id INNER JOIN midas m ON m.midas_id = dm.midas_id WHERE d.dok_id = {self.dok_id};"
+        cols=['midas_id', 'nazwa_zloza']
+        zl_df = df_from_db(sql, cols)
         if len(zl_df) == 0:
             self.l_zloza.setText("")
         else:
@@ -164,7 +168,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             for index in zl_df.to_records():
                 zl_txt = f"{zl_txt}{index[1]}  {index[2]}     "
             self.l_zloza.setText(zl_txt)
-        tag_df = self.tags_from_dok()
+        sql = f"SELECT t.t_tag FROM dokumentacje d INNER JOIN dokumentacje_tagi dt ON d.dok_id = dt.dok_id INNER JOIN tagi t ON t.tag_id = dt.tag_id WHERE d.dok_id = {self.dok_id};"
+        cols=['tag']
+        tag_df = df_from_db(sql, cols)
         if len(tag_df) == 0:
             self.l_tag.setText("")
         else:
@@ -178,7 +184,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if not self.dok_id:
             self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
         else:
-            map_df_1 = self.maps_for_sel_dok()
+            sql = f"SELECT map_id, t_map_nazwa, t_map_warstwa, i_map_rok, t_map_plik FROM public.mapy WHERE dok_id = {self.dok_id}"
+            cols=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik']
+            map_df_1 = df_from_db(sql, cols)
             if len(map_df_1) == 0:
                 self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
             else:
@@ -341,7 +349,9 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def search_dok(self):
         """Wyszukanie dokumentacji w db na podstawie zapytania sql."""
         search_txt = self.le_search.text()
-        self.dok_df = self.dok_from_query(search_txt)
+        sql = f"SELECT * FROM search_dok('{search_txt}', false)"
+        cols=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank']
+        self.dok_df = df_from_db(sql, cols)
 
     def map_update_from_tv(self, tv_df):
         """Aktualizacja stanu map po zmianie w tv_map."""
@@ -354,34 +364,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         del_df = mask[mask['checkbox_new'] == False]
         del_list = del_df['map_id'].tolist()
         self.maps_in_toc_update(add_list, del_list)
-
-    def dok_from_query(self, search_txt):
-        """Zwraca dataframe z danymi dokumentacji wybranych w kwerendzie."""
-        empty_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
-        db = PgConn()
-        sql = f"SELECT * FROM search_dok('{search_txt}', false)"
-        if db:
-            df = db.query_pd(sql, ['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
-            if isinstance(df, pd.DataFrame):
-                return df if len(df) > 0 else empty_df
-            else:
-                return empty_df
-        else:
-            return empty_df
-
-    def maps_for_sel_dok(self):
-        """Zwraca dataframe z danymi map przypisanych do wybranej dokumentacji."""
-        empty_df = pd.DataFrame(columns=['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
-        db = PgConn()
-        sql = f"SELECT map_id, t_map_nazwa, t_map_warstwa, i_map_rok, t_map_plik FROM public.mapy WHERE dok_id = {self.dok_id}"
-        if db:
-            df = db.query_pd(sql, ['map_id', 'tytuł mapy', 'warstwa mapy', 'rok', 'plik'])
-            if isinstance(df, pd.DataFrame):
-                return df if len(df) > 0 else empty_df
-            else:
-                return empty_df
-        else:
-            return empty_df
 
     def closeEvent(self, event):
         self.root.removedChildren.disconnect(self.node_removed)
