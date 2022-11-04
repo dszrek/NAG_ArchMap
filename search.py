@@ -28,8 +28,7 @@ class DokFromTextSearcher(QFrame):
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
         self.completer.setMaxVisibleItems(10)
         self.completer.setCaseSensitivity(False)
-        self.completer.popup().setIconSize(QSize(72, 26))
-        self.completer.popup().setStyleSheet("{font-size: 8pt;}")
+        self.completer.popup().setIconSize(QSize(69, 25))
         self.completer.setModel(self.create_index_model())
         self.le_search.setCompleter(self.completer)
         # Kompozycja:
