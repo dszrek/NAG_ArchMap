@@ -5,12 +5,21 @@ import pandas as pd
 
 from qgis.gui import QgsFilterLineEdit
 from qgis.PyQt.QtCore import Qt, QSize, QModelIndex
-from qgis.PyQt.QtWidgets import QFrame, QVBoxLayout, QCompleter
+from qgis.PyQt.QtWidgets import QFrame, QGridLayout, QCompleter, QLabel, QSizePolicy
 from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem, QIcon
 
 from .main import df_from_db
 
 ICON_PATH = os.path.dirname(os.path.realpath(__file__)) + os.path.sep + 'ui' + os.path.sep
+CASSES = [
+        ['midas_id', '(Numer złoża w bazie MIDAS)', 'rgb(255, 0, 0)'],
+        ['midas_name', '(Nazwa złoża w bazie MIDAS)', 'rgb(180, 0, 0)'],
+        ['cbdg_id', '(Numer dokumentacji w bazie CBDG)', 'rgb(150, 40, 140)'],
+        ['inw_id', '(Archiwalny numer inwentarzowy dokumentacji)', 'rgb(0, 90, 180)'],
+        ['kat_id', '(Archiwalny numer katalogowy dokumentacji)', 'rgb(0, 128, 255)'],
+        ['tag', '(Słowo kluczowe przypisane do dokumentacji)', 'rgb(80, 150, 0)'],
+        ['phrase', '(Fraza wyszukana w tytułach dokumentacji)', 'rgb(100, 100, 100)']
+    ]
 
 class DokFromTextSearcher(QFrame):
     """Widget tekstowej wyszukiwarki dokumentacji."""
@@ -32,18 +41,60 @@ class DokFromTextSearcher(QFrame):
         self.completer.popup().setIconSize(QSize(69, 25))
         self.completer.setModel(self.create_index_model())
         self.le_search.setCompleter(self.completer)
+        self.l_result_title = QLabel()
+        self.l_result = QLabel()
+        self.l_result.setTextFormat(Qt.RichText)
+        self.l_result.setWordWrap(True)
+        self.l_result.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         # Połączenia:
         self.completer.activated[QModelIndex].connect(self.completer_activated)
+        self.le_search.returnPressed.connect(self.enter_pressed)
         # Kompozycja:
-        lay = QVBoxLayout()
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-        lay.addWidget(self.le_search)
+        lay = QGridLayout()
+        lay.setContentsMargins(0, 0, 0, 5)
+        lay.setSpacing(10)
+        lay.addWidget(self.le_search, 0, 0, 1, 3)
+        lay.addWidget(self.l_result_title, 1, 0, 1, 1)
+        lay.setAlignment(self.l_result_title, Qt.AlignLeft | Qt.AlignTop)
+        lay.addWidget(self.l_result, 1, 1, 1, 1)
         self.setLayout(lay)
+        # Definicja zmiennych:
+        self.act_search = []  # Lista z nazwą i kategorią aktualnego wyszukiwania
+
+    def __setattr__(self, attr, val):
+        """Przechwycenie zmiany atrybutu."""
+        super().__setattr__(attr, val)
+        if attr == "act_search":
+            self.search_update()
+
+    def enter_pressed(self):
+        """Aktualizacja parametrów wyszukiwania po wyczyszczeniu"""
+        if len(self.le_search.text()) == 0:
+            # Wyszukiwanie jest puste
+            return
+        if not self.completer.popup().isVisible() or self.completer.currentIndex().row() == -1:
+            # Nie wykorzystano completer'a, wyszukiwanie frazy w tytułach dokumentacji
+            self.act_search = [self.le_search.text(), "phrase"]
+            self.le_search.setText("")
+            self.le_search.clearFocus()
 
     def completer_activated(self, index):
-        """Odpalony po wyborze elementu z completer'a."""
-        print(f"completer_activated: {index.data()}, {index.sibling(index.row(), 1).data()}")
+        """Ustala parametry wyszukiwania po wyborze elementu z completer'a."""
+        self.le_search.setText("")
+        self.le_search.clearFocus()
+        self.act_search = [index.data(), index.sibling(index.row(), 1).data()]
+
+    def search_update(self):
+        """Aktualizacja po zmianie parametrów wyszukiwania."""
+        if not self.act_search:
+            self.l_result_title.setText("   Aktualne wyszukiwanie jest puste.")
+            self.l_result.setText("")
+            return
+        self.l_result_title.setText("   Aktualne wyszukiwanie:")
+        for case in CASSES:
+            if case[0] == self.act_search[1]:
+                txt = f'<p style="color:{case[2]};"><b>{self.act_search[0]}</b> {case[1]}</p>'
+                self.l_result.setText(txt)
 
     def dataindex_from_db(self):
         """Zwraca dataframe z pobranymi z db indeksami wszystkich dokumentacji."""
