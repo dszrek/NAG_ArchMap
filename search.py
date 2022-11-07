@@ -26,6 +26,7 @@ class DokFromTextSearcher(QFrame):
         self.completer = QCompleter()
         self.completer.setCompletionMode(QCompleter.PopupCompletion)
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.setModelSorting(QCompleter.CaseSensitivelySortedModel)
         self.completer.setMaxVisibleItems(10)
         self.completer.setCaseSensitivity(False)
         self.completer.popup().setIconSize(QSize(69, 25))
@@ -63,8 +64,15 @@ class DokFromTextSearcher(QFrame):
         # Quasi-naturalne sortowanie, bez biblioteki 'natsort':
         df[['_str', '_int']] = df['val'].str.extract(r'([A-Za-zżźćńółęąśŻŹĆĄŚĘŁÓŃ]*)(\d*)')
         df['_int'] = pd.to_numeric(df['_int'], errors='coerce')
-        df = df.sort_values(by=['_str', '_int'], ignore_index=True).drop(columns=['_str', '_int'])
+        df = df.sort_values(by=['_str', '_int'], key=self.locale_sorting, ignore_index=True).drop(columns=['_str', '_int'])
         return df
+
+    def locale_sorting(self, x):
+        """Uwzględnia polskie znaki przy sortowaniu."""
+        if x.name == "_str":
+            return x.astype('str').str.replace('ł', 'l').str.replace('Ł', 'L').str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+        else:
+            return x
 
     def create_index_model(self):
         """W oparciu o dataframe z indeksami dokumentacji (self.df) tworzy model danych do zasilenia QCompleter'a."""
