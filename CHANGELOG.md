@@ -1,5 +1,10 @@
 # Changelog (dziennik zmian):
 
+## [0.4.0] - 2022-11-08
+
+### Zmieniono
+- Wyszukiwarka dokumentacji została gruntownie przeprojektowana tak, aby jak najbardziej uprościć sposób korzystania z jej funkcjonalności. W oparciu o treść wpisywaną w polu wyszukiwania, wtyczka analizuje zindeksowaną zawartość bazy danych i w rozwijalnej liście wyświetla pasujące wyniki z rozróżnieniem na kategorie wyszukiwania: nr złoża w bazie MIDAS, nazwa złoża w bazie MIDAS, nr dokumentacji w CBDG, nr inwentarzowy dokumentacji, nr katalogowy dokumentacji, słowo kluczowe przypisane do dokumentacji (np. nazwa kopalni eksploatująca udokumentowane złoże). Aby skorzystać z sugerowanej odpowiedzi, należy wybrać element z listy klikając na nim lewym przyciskiem myszy, bądź korzystając z klawiatury (nawigacja po elementach - klawisze góra/dół, zatwierdzenie wyboru - klawisz Enter). Wpisanie frazy bez wybrania indeksu z listy i naciśniecie klawisza Enter (w sytuacji, gdy lista rozwijalna jest nadal wyświetlana, należy dwukrotnie wcisnąć klawisz Enter - pierwszy raz, aby ukryć listę i drugi raz, żeby rozpoczać wyszukiwanie) spowoduje, że zostanie zwrócony wynik wyszukiwania frazy w tytułach dokumentacji.
+
 ## [0.3.0] - 2022-10-27
 
 ### Zmieniono
