@@ -5,7 +5,7 @@ import pandas as pd
 
 from qgis.gui import QgsFilterLineEdit
 from qgis.PyQt.QtCore import Qt, QSize, QModelIndex
-from qgis.PyQt.QtWidgets import QFrame, QGridLayout, QCompleter, QLabel, QSizePolicy
+from qgis.PyQt.QtWidgets import QFrame, QGridLayout, QCompleter, QLabel, QSizePolicy, QSpacerItem, QToolButton
 from qgis.PyQt.QtGui import QStandardItemModel, QStandardItem, QIcon
 
 from .main import df_from_db
@@ -50,26 +50,56 @@ class DokFromTextSearcher(QFrame):
         self.completer.popup().setIconSize(QSize(69, 25))
         self.completer.setModel(self.create_index_model())
         self.le_search.setCompleter(self.completer)
+        spacer = QSpacerItem(1, 5, QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.l_result_title = QLabel()
         self.l_result = QLabel()
         self.l_result.setTextFormat(Qt.RichText)
         self.l_result.setWordWrap(True)
-        self.l_result.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.l_result.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.l_result.setMinimumWidth(200)
+        self.l_category = QLabel()
+        self.l_category.setTextFormat(Qt.RichText)
+        self.l_category.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.btn_clear = QToolButton()
+        self.btn_clear.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_clear.setFixedSize(30, 13)
+        self.btn_clear.setIconSize(QSize(30, 13))
+        self.btn_clear.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.btn_clear.setStyleSheet("QToolButton{border: none;}")
+        self.btn_clear.setAutoRaise(True)
+        icon = QIcon()
+        icon.addFile(f"{ICON_PATH}clear_0.png", size=QSize(30, 13), mode=QIcon.Normal, state=QIcon.Off)
+        icon.addFile(f"{ICON_PATH}clear_0_act.png", size=QSize(30, 13), mode=QIcon.Active, state=QIcon.Off)
+        icon.addFile(f"{ICON_PATH}clear_0.png", size=QSize(30, 13), mode=QIcon.Selected, state=QIcon.Off)
+        self.btn_clear.setIcon(icon)
         # Połączenia:
         self.completer.activated[QModelIndex].connect(self.completer_activated)
         self.le_search.returnPressed.connect(self.enter_pressed)
+        self.btn_clear.pressed.connect(lambda: setattr(self, 'act_search', []))
         # Kompozycja:
         lay = QGridLayout()
         lay.setContentsMargins(0, 0, 0, 5)
-        lay.setSpacing(10)
-        lay.addWidget(self.le_search, 0, 0, 1, 3)
-        lay.addWidget(self.l_result_title, 1, 0, 1, 1)
+        lay.setSpacing(5)
+        lay.addWidget(self.le_search, 0, 0, 1, 4)
+        lay.addItem(spacer, 1, 0, 1, 4)
+        lay.addWidget(self.l_result_title, 2, 0, 1, 1)
         lay.setAlignment(self.l_result_title, Qt.AlignLeft | Qt.AlignTop)
-        lay.addWidget(self.l_result, 1, 1, 1, 1)
+        lay.addWidget(self.l_result, 2, 1, 1, 1)
+        lay.setAlignment(self.l_result, Qt.AlignLeft | Qt.AlignTop)
+        lay.addWidget(self.l_category, 2, 2, 1, 1)
+        lay.setAlignment(self.l_category, Qt.AlignRight | Qt.AlignTop)
+        lay.addWidget(self.btn_clear, 2, 3, 1, 1)
+        lay.setAlignment(self.btn_clear, Qt.AlignLeft | Qt.AlignTop)
+        lay.setColumnStretch(0, 1)
+        lay.setColumnStretch(1, 10)
+        lay.setColumnStretch(2, 1)
+        lay.setColumnStretch(3, 1)
         self.setLayout(lay)
         # Definicja zmiennych:
         self.dlg = self.parent()  # Referencja do dockwidget'u
+        self.init_void = True
         self.act_search = []  # Lista z nazwą i kategorią aktualnego wyszukiwania
+        self.init_void = False
 
     def __setattr__(self, attr, val):
         """Przechwycenie zmiany atrybutu."""
@@ -78,10 +108,14 @@ class DokFromTextSearcher(QFrame):
             self.search_update()
             if val:
                 self.df_from_dok_search()
+            else:
+                if not self.init_void:
+                    self.dlg.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path'])
 
     def enter_pressed(self):
         """Aktualizacja parametrów wyszukiwania po wyczyszczeniu"""
         if len(self.le_search.text()) == 0:
+            self.act_search = []
             # Wyszukiwanie jest puste
             return
         if not self.completer.popup().isVisible() or self.completer.currentIndex().row() == -1:
@@ -101,12 +135,17 @@ class DokFromTextSearcher(QFrame):
         if not self.act_search:
             self.l_result_title.setText("   Aktualne wyszukiwanie jest puste.")
             self.l_result.setText("")
+            self.l_category.setText("")
+            self.btn_clear.setVisible(False)
             return
+        self.btn_clear.setVisible(True)
         self.l_result_title.setText("   Aktualne wyszukiwanie:")
         for case in CASSES:
             if case[0] == self.act_search[2]:
-                txt = f'<p style="color:{case[2]};"><b>{self.act_search[0]}</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<font color="gray"><i>{case[1]}</i></font></p>'
-                self.l_result.setText(txt)
+                txt_result = f'<p style="color:{case[2]};"><b>{self.act_search[0]}</b></p>'
+                self.l_result.setText(txt_result)
+                txt_category = f'<p style="color: grey;"><i>{case[1]}</i></p>'
+                self.l_category.setText(txt_category)
 
     def dataindex_from_db(self):
         """Zwraca dataframe z pobranymi z db indeksami wszystkich dokumentacji."""

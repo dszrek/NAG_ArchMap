@@ -64,7 +64,7 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.init_void = True
         self.init_tv_dok()
         self.init_tv_map()
-        self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
+        self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path'])
         self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
         self.dok_id = None
         self.cbdg_id = None
