@@ -57,8 +57,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.proj = QgsProject.instance()  # Referencja do instancji projektu
         self.root = self.proj.layerTreeRoot()  # Referencja do drzewka legendy projektu
         self.canvas = iface.mapCanvas()  # Referencja do mapy
-        self.frm_search_1.setVisible(False)
-        self.frm_search_2.setVisible(False)
         self.txt_search = DokFromTextSearcher(self)
         self.frm_search.layout().addWidget(self.txt_search)
         self.init_void = True
