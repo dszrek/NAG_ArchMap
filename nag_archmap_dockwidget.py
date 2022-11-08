@@ -66,7 +66,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.init_tv_map()
         self.dok_df = pd.DataFrame(columns=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank'])
         self.map_df = pd.DataFrame(columns=['checkbox', 'map_id', 'nazwa', 'warstwa', 'rok', 'plik'])
-        self.setup_widgets()
         self.dok_id = None
         self.cbdg_id = None
         self.main_grp = None
@@ -317,17 +316,6 @@ class NagArchMapDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def dok_col(self, df):
         """Zwraca dataframe z kolumnami pasującymi do tv_dok."""
         return pd.concat(objs=[df.iloc[:,0:2], df.iloc[:,4:6]], axis=1)
-
-    def setup_widgets(self):
-        """Podłączenie widgetów do funkcji."""
-        self.btn_search.clicked.connect(self.search_dok)
-
-    def search_dok(self):
-        """Wyszukanie dokumentacji w db na podstawie zapytania sql."""
-        search_txt = self.le_search.text()
-        sql = f"SELECT * FROM search_dok('{search_txt}', false)"
-        cols=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path', 'tagi', 'zloza', 'rank']
-        self.dok_df = df_from_db(sql, cols)
 
     def map_update_from_tv(self, tv_df):
         """Aktualizacja stanu map po zmianie w tv_map."""

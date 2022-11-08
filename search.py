@@ -20,6 +20,15 @@ CASSES = [
         ['tag', '(Słowo kluczowe przypisane do dokumentacji)', 'rgb(80, 150, 0)'],
         ['phrase', '(Fraza wyszukana w tytułach dokumentacji)', 'rgb(100, 100, 100)']
     ]
+RAW_SQLS = [
+            ['midas_id', "SELECT d.dok_id, d.cbdg_id, d.t_nr_inw, d.b_nr_kat, d.t_dok_tytul, d.i_dok_rok, d.t_dok_path FROM dokumentacje d INNER JOIN dokumentacje_midas dm ON d.dok_id = dm.dok_id WHERE dm.midas_id = {val}"],
+            ['midas_name', "SELECT d.dok_id, d.cbdg_id, d.t_nr_inw, d.b_nr_kat, d.t_dok_tytul, d.i_dok_rok, d.t_dok_path FROM dokumentacje d INNER JOIN dokumentacje_midas dm ON d.dok_id = dm.dok_id INNER JOIN midas m ON m.midas_id = dm.midas_id WHERE m.t_zloze_nazwa = '{val}'"],
+            ['cbdg_id', "SELECT dok_id, cbdg_id, t_nr_inw, b_nr_kat, t_dok_tytul, i_dok_rok, t_dok_path FROM dokumentacje d WHERE cbdg_id = {val}"],
+            ['inw_id', "SELECT dok_id, cbdg_id, t_nr_inw, b_nr_kat, t_dok_tytul, i_dok_rok, t_dok_path FROM dokumentacje d WHERE t_nr_inw = '{val}' AND b_nr_kat = false"],
+            ['kat_id', "SELECT dok_id, cbdg_id, t_nr_inw, b_nr_kat, t_dok_tytul, i_dok_rok, t_dok_path FROM dokumentacje d WHERE t_nr_inw = '{val}' AND b_nr_kat = true"],
+            ['tag', "SELECT d.dok_id, d.cbdg_id, d.t_nr_inw, d.b_nr_kat, d.t_dok_tytul, d.i_dok_rok, d.t_dok_path FROM dokumentacje d INNER JOIN dokumentacje_tagi dt ON d.dok_id = dt.dok_id INNER JOIN tagi t ON dt.tag_id = t.tag_id WHERE t.t_tag = '{val}'"],
+            ['phrase', "SELECT d.dok_id, d.cbdg_id, d.t_nr_inw, d.b_nr_kat, d.t_dok_tytul, d.i_dok_rok, d.t_dok_path FROM dokumentacje d WHERE d.t_dok_tytul ilike '%{val}%'"]
+        ]
 
 class DokFromTextSearcher(QFrame):
     """Widget tekstowej wyszukiwarki dokumentacji."""
@@ -59,6 +68,7 @@ class DokFromTextSearcher(QFrame):
         lay.addWidget(self.l_result, 1, 1, 1, 1)
         self.setLayout(lay)
         # Definicja zmiennych:
+        self.dlg = self.parent()  # Referencja do dockwidget'u
         self.act_search = []  # Lista z nazwą i kategorią aktualnego wyszukiwania
 
     def __setattr__(self, attr, val):
@@ -66,6 +76,8 @@ class DokFromTextSearcher(QFrame):
         super().__setattr__(attr, val)
         if attr == "act_search":
             self.search_update()
+            if val:
+                self.df_from_dok_search()
 
     def enter_pressed(self):
         """Aktualizacja parametrów wyszukiwania po wyczyszczeniu"""
@@ -130,3 +142,21 @@ class DokFromTextSearcher(QFrame):
             model.setItem(index[0], 0, item_1)
             model.setItem(index[0], 1, item_2)
         return model
+
+    def df_from_dok_search(self):
+        """Zwraca dataframe z danymi dokumentacji wyszukanymi wg parametrów 'self.act_search'."""
+        sql = self.sql_parser()
+        if not sql:
+            return
+        cols=['dok_id', 'cbdg_id', 'nr_inw', 'czy_nr_kat', 'tytul', 'rok', 'path']
+        self.dlg.dok_df = df_from_db(sql, cols)
+
+    def sql_parser(self):
+        """Zwraca tekst sql z wartością pobraną z 'self.act_search'."""
+        sql = None
+        val = self.act_search[0]
+        for raw_sql in RAW_SQLS:
+            if raw_sql[0] == self.act_search[1]:
+                sql = eval('f"{}"'.format(raw_sql[1]))
+                break
+        return sql
